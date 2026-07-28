@@ -7,8 +7,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,8 +42,12 @@ fun BarraSuperiorVisor(
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = MedidasLadon.barraSuperior)
                 .background(MaterialTheme.colorScheme.surfaceContainer)
+                // Edge-to-edge dibuja bajo la barra de estado: sin esto el título
+                // aparece debajo del reloj. El fondo sí llega hasta arriba —por eso el
+                // padding va después del color— y sólo el contenido se aparta.
+                .statusBarsPadding()
+                .heightIn(min = MedidasLadon.barraSuperior)
                 .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -94,8 +99,11 @@ fun BarraInferiorVisor(
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = MedidasLadon.barraInferior)
-                .background(MaterialTheme.colorScheme.surfaceContainer),
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                // Igual que arriba: el color llega hasta el borde y el contenido se
+                // aparta de la barra de navegación del sistema.
+                .navigationBarsPadding()
+                .heightIn(min = MedidasLadon.barraInferior),
         horizontalArrangement = Arrangement.SpaceAround,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -105,24 +113,28 @@ fun BarraInferiorVisor(
             tag = TAG_DESTINO_INDICE,
             habilitado = true,
             alPulsar = alAbrirIndice,
+            modifier = Modifier.weight(1f),
         )
         DestinoInferior(
             icono = IconosLadon.formulario,
             etiqueta = "Formulario",
             tag = TAG_DESTINO_FORMULARIO,
             habilitado = false,
+            modifier = Modifier.weight(1f),
         )
         DestinoInferior(
             icono = IconosLadon.herramientas,
             etiqueta = "Herramientas",
             tag = TAG_DESTINO_HERRAMIENTAS,
             habilitado = false,
+            modifier = Modifier.weight(1f),
         )
         DestinoInferior(
             icono = IconosLadon.firmaCertificado,
             etiqueta = "Firmas",
             tag = TAG_DESTINO_FIRMAS,
             habilitado = false,
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -133,14 +145,16 @@ private fun DestinoInferior(
     etiqueta: String,
     tag: String,
     habilitado: Boolean,
+    modifier: Modifier = Modifier,
     alPulsar: () -> Unit = {},
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp),
         modifier =
-            Modifier
-                .width(ANCHO_DESTINO)
+            modifier
+                // Reparto a partes iguales en vez de ancho fijo: con 76 dp clavados,
+                // «Herramientas» se quedaba en «Herramienta».
                 .heightIn(min = MedidasLadon.areaTactil)
                 .clickable(enabled = habilitado, onClick = alPulsar)
                 .semantics { role = Role.Tab }
@@ -166,7 +180,6 @@ private fun DestinoInferior(
     }
 }
 
-private val ANCHO_DESTINO = 76.dp
 private const val ALFA_DESHABILITADO = 0.38f
 
 const val TAG_ATRAS = "visor_atras"

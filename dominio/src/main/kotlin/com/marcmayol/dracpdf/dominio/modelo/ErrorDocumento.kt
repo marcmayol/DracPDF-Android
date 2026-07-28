@@ -19,11 +19,27 @@ sealed class ErrorDocumento(
         val origen: OrigenDocumento,
     ) : ErrorDocumento("La contraseña no abre «${origen.identificador}»")
 
-    /** No se ha podido leer: fichero corrupto, truncado o que no es un PDF. */
+    /**
+     * El contenido no se deja interpretar: fichero corrupto, truncado, o que no es un
+     * PDF por mucho que se llame así.
+     */
     class NoSePuedeLeer(
         val origen: OrigenDocumento,
         causa: Throwable? = null,
     ) : ErrorDocumento("No se ha podido leer «${origen.identificador}»", causa)
+
+    /**
+     * Ni siquiera se ha podido llegar al fichero: la ruta ya no existe, o el sistema
+     * no deja abrirla.
+     *
+     * Es distinto de [NoSePuedeLeer] y la diferencia importa para quien lo lee: culpar
+     * al PDF de estar roto cuando el problema es que no se puede acceder a él manda al
+     * usuario a buscar el fallo donde no está.
+     */
+    class NoSePuedeAbrirElFichero(
+        val origen: OrigenDocumento,
+        causa: Throwable? = null,
+    ) : ErrorDocumento("No se ha podido abrir «${origen.identificador}»", causa)
 
     /**
      * El permiso sobre el fichero ya no vale. Pasa con los recientes: el usuario

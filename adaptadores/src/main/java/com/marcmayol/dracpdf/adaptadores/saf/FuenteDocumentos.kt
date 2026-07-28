@@ -34,7 +34,9 @@ class FuenteDocumentosAndroid(
             // dejó de compartir. No es un PDF roto y no debe contarse como tal.
             throw ErrorDocumento.SinPermiso(origen).initCause(e) as ErrorDocumento
         } catch (e: IOException) {
-            throw ErrorDocumento.NoSePuedeLeer(origen, e)
+            // No se ha llegado al fichero. Que el contenido sea o no un PDF es una
+            // pregunta que aquí ni siquiera ha llegado a hacerse.
+            throw ErrorDocumento.NoSePuedeAbrirElFichero(origen, e)
         }
 }
 
