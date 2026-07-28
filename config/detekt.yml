@@ -1,0 +1,31 @@
+# Ajustes sobre la configuración por defecto de detekt (buildUponDefaultConfig).
+# Se toca lo mínimo, y siempre por anotación en vez de por ruta: lo que justifica la
+# excepción es ser un composable, no estar en tal carpeta.
+
+complexity:
+  LongMethod:
+    # Un composable de pantalla es largo por naturaleza; partirlo para cumplir un
+    # número no lo hace más legible.
+    ignoreAnnotated: ['Composable']
+  LongParameterList:
+    ignoreAnnotated: ['Composable', 'Preview']
+  TooManyFunctions:
+    thresholdInFiles: 20
+    thresholdInClasses: 20
+
+style:
+  MagicNumber:
+    # Las medidas del diseño (56 dp, 80 dp, 24 dp...) son literales por definición.
+    ignoreAnnotated: ['Composable', 'Preview']
+    excludes: ['**/test/**', '**/androidTest/**']
+  MaxLineLength:
+    maxLineLength: 120
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview']
+
+naming:
+  FunctionNaming:
+    # Los composables van en PascalCase, como manda Compose.
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    constantPattern: '[A-Z][A-Za-z0-9]*'

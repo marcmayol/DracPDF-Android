@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Único color en XML de todo el proyecto: el fondo de la ventana antes del
+        primer frame de Compose. Es el token `canvas` del tema oscuro de Ladón.
+        Todo lo demás vive en el ColorScheme de Compose.
+    -->
+    <color name="canvas_oscuro">#14161A</color>
+</resources>
