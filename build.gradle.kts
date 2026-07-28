@@ -31,6 +31,11 @@ tasks.register("verificar") {
     dependsOn(
         subprojects.map { "${it.path}:ktlintCheck" },
         subprojects.map { "${it.path}:detekt" },
+        // Sólo tests JVM: los instrumentados necesitan un dispositivo y van aparte,
+        // con `connectedCheck`. Esta puerta tiene que poder pasarse sin emulador.
         ":dominio:test",
+        ":adaptadores:testDebugUnitTest",
+        ":ui:testDebugUnitTest",
+        ":app:testDebugUnitTest",
     )
 }

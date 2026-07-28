@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.marcmayol.dracpdf.ui.tema.TemaDracPDF
 
 /**
  * Única actividad de la aplicación. El diseño manda edge-to-edge siempre activo y
@@ -28,10 +29,17 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun Aplicacion() {
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
+    TemaDracPDF {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = "DracPDF")
+                Text(
+                    text = "DracPDF",
+                    style = MaterialTheme.typography.displaySmall,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
             }
         }
     }

@@ -15,7 +15,10 @@ complexity:
 
 style:
   MagicNumber:
-    # Las medidas del diseño (56 dp, 80 dp, 24 dp...) son literales por definición.
+    # Las medidas del diseño (56 dp, 80 dp, 24 dp...) y los colores (0xFFE0534A) son
+    # literales por definición: bautizarlos otra vez no explica nada que el nombre de
+    # la propiedad no diga ya.
+    ignorePropertyDeclaration: true
     ignoreAnnotated: ['Composable', 'Preview']
     excludes: ['**/test/**', '**/androidTest/**']
   MaxLineLength:
