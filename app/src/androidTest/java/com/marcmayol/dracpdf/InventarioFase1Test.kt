@@ -93,7 +93,7 @@ class InventarioFase1Test {
         listOf(
             Accion(TAG_ATRAS, "Atrás", "cierra el documento y vuelve a inicio", "siempre"),
             Accion(TAG_BUSCAR, "Buscar", "Fase 7", "deshabilitada en la Fase 1", habilitada = false),
-            Accion(TAG_MENU, "⋮", "Fase 1 tarea 9 y posteriores", "deshabilitada", habilitada = false),
+            Accion(TAG_MENU, "Documentos abiertos", "hoja de documentos abiertos", "siempre"),
             Accion(TAG_DESTINO_INDICE, "Índice", "hoja de índice y miniaturas", "siempre"),
             Accion(
                 TAG_DESTINO_FORMULARIO,

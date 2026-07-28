@@ -62,6 +62,8 @@ fun PantallaVisor(
     modelo: VisorViewModel,
     alSalir: () -> Unit,
     modifier: Modifier = Modifier,
+    documentosAbiertos: Int = 1,
+    alAbrirDocumentos: () -> Unit = {},
 ) {
     val estado by modelo.estado.collectAsState()
     val paginas by modelo.paginas.collectAsState()
@@ -97,7 +99,12 @@ fun PantallaVisor(
                 .background(MaterialTheme.colorScheme.background),
     ) {
         AnimatedVisibility(visible = estado.chromeVisible, enter = fadeIn(), exit = fadeOut()) {
-            BarraSuperiorVisor(nombre = estado.nombre, alSalir = alSalir)
+            BarraSuperiorVisor(
+                nombre = estado.nombre,
+                alSalir = alSalir,
+                documentosAbiertos = documentosAbiertos,
+                alAbrirDocumentos = alAbrirDocumentos,
+            )
         }
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {

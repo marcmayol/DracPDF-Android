@@ -37,6 +37,8 @@ fun BarraSuperiorVisor(
     nombre: String,
     alSalir: () -> Unit,
     modifier: Modifier = Modifier,
+    documentosAbiertos: Int = 1,
+    alAbrirDocumentos: () -> Unit = {},
 ) {
     Row(
         modifier =
@@ -57,14 +59,39 @@ fun BarraSuperiorVisor(
             alPulsar = alSalir,
             modifier = Modifier.testTag(TAG_ATRAS),
         )
-        Text(
-            text = nombre,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(horizontal = 4.dp).testTag(TAG_TITULO),
-        )
+        // El nombre del archivo es la puerta a los documentos abiertos, y el chevron
+        // lo delata: unas pestañas serían chrome permanente, que es justo lo que esta
+        // aplicación no hace. Con un solo documento no hay nada que elegir, así que
+        // no se anuncia.
+        val hayVarios = documentosAbiertos > 1
+        Row(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = MedidasLadon.areaTactil)
+                    .clickable(enabled = hayVarios, onClick = alAbrirDocumentos)
+                    .padding(horizontal = 4.dp)
+                    .testTag(TAG_TITULO),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = nombre,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (hayVarios) {
+                Text(
+                    text = "▾",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag(TAG_CHEVRON_DOCUMENTOS),
+                )
+            }
+        }
         BotonIconoLadon(
             icono = IconosLadon.buscar,
             descripcion = "Buscar en el documento",
@@ -75,10 +102,9 @@ fun BarraSuperiorVisor(
             modifier = Modifier.testTag(TAG_BUSCAR),
         )
         BotonIconoLadon(
-            icono = IconosLadon.mas,
-            descripcion = "Más acciones",
-            alPulsar = {},
-            habilitado = false,
+            icono = IconosLadon.documentos,
+            descripcion = "Documentos abiertos",
+            alPulsar = alAbrirDocumentos,
             modifier = Modifier.testTag(TAG_MENU),
         )
     }
@@ -190,3 +216,4 @@ const val TAG_DESTINO_INDICE = "visor_destino_indice"
 const val TAG_DESTINO_FORMULARIO = "visor_destino_formulario"
 const val TAG_DESTINO_HERRAMIENTAS = "visor_destino_herramientas"
 const val TAG_DESTINO_FIRMAS = "visor_destino_firmas"
+const val TAG_CHEVRON_DOCUMENTOS = "visor_chevron_documentos"

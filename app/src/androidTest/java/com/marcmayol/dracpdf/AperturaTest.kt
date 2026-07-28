@@ -100,7 +100,7 @@ class AperturaTest {
                 contrasena = "abrete",
             )
         val grafo = Grafo(contexto)
-        val modelo = AppViewModel(grafo.abrirDocumento, grafo.cerrarDocumento)
+        val modelo = AppViewModel(grafo.abrirDocumento, grafo.cerrarDocumento, grafo.registro)
         val origen = OrigenDocumento.Privado(fichero.absolutePath, "conclave.pdf")
 
         // Sin contraseña: no es un error, es un documento que espera.

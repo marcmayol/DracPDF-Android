@@ -1,12 +1,17 @@
 package com.marcmayol.dracpdf
 
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
 import com.marcmayol.dracpdf.dominio.casos.CerrarDocumento
+import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.modelo.ErrorDocumento
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
+import com.marcmayol.dracpdf.dominio.registro.EstadoDocumento
+import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
+import com.marcmayol.dracpdf.ui.visor.aImageBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,9 +45,22 @@ sealed interface EstadoApp {
 class AppViewModel(
     private val abrirDocumento: AbrirDocumento,
     private val cerrarDocumento: CerrarDocumento,
+    private val registro: RegistroDocumentos,
+    private val renderizarPagina: RenderizarPagina? = null,
 ) : ViewModel() {
     private val _estado = MutableStateFlow<EstadoApp>(EstadoApp.Inicio)
     val estado: StateFlow<EstadoApp> = _estado.asStateFlow()
+
+    private val _abiertos = MutableStateFlow<List<EstadoDocumento>>(emptyList())
+
+    /**
+     * Los documentos abiertos a la vez.
+     *
+     * El registro es el dueño de la lista; esto es sólo su reflejo para la interfaz,
+     * que se refresca cuando algo cambia. Duplicar la verdad en dos sitios es la
+     * manera más rápida de que dejen de coincidir.
+     */
+    val abiertos: StateFlow<List<EstadoDocumento>> = _abiertos.asStateFlow()
 
     /**
      * Abre un documento. Si está cifrado, el estado pasa a pedir la contraseña en vez
@@ -62,7 +80,80 @@ class AppViewModel(
                     onSuccess = { EstadoApp.Viendo(it.id) },
                     onFailure = { fallo -> estadoDelFallo(origen, contrasena, fallo) },
                 )
+            refrescarAbiertos()
         }
+    }
+
+    /**
+     * Cambia al documento elegido en la lista. No se cierra el anterior: la gracia de
+     * tener varios abiertos es volver a ellos por donde iban.
+     */
+    fun cambiarA(id: IdDocumento) {
+        if (registro.estaAbierto(id)) _estado.value = EstadoApp.Viendo(id)
+    }
+
+    /**
+     * Cierra un documento de la lista.
+     *
+     * Si era el que se estaba mirando, se pasa al siguiente que quede abierto, y sólo
+     * si no queda ninguno se vuelve a inicio: cerrar una pestaña no debería echarte de
+     * las demás.
+     */
+    fun cerrar(id: IdDocumento) {
+        viewModelScope.launch {
+            val eraElActivo = (_estado.value as? EstadoApp.Viendo)?.id == id
+            withContext(Dispatchers.IO) { runCatching { cerrarDocumento(id) } }
+            refrescarAbiertos()
+
+            if (eraElActivo) {
+                val siguiente = _abiertos.value.firstOrNull()
+                _estado.value = if (siguiente == null) EstadoApp.Inicio else EstadoApp.Viendo(siguiente.id)
+            }
+        }
+    }
+
+    fun cerrarTodos() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                registro.abiertos().forEach { runCatching { cerrarDocumento(it.id) } }
+            }
+            refrescarAbiertos()
+            _estado.value = EstadoApp.Inicio
+        }
+    }
+
+    private val _miniaturas = MutableStateFlow<Map<String, ImageBitmap>>(emptyMap())
+
+    /** La primera página de cada documento abierto, para la lista. */
+    val miniaturas: StateFlow<Map<String, ImageBitmap>> = _miniaturas.asStateFlow()
+
+    /**
+     * Dibuja la primera página de un documento para su fila de la lista.
+     *
+     * Es un render por documento y a escala mínima, y se queda hecho: sin él la lista
+     * enseña rectángulos blancos, que es peor que no enseñar nada porque parece que
+     * el documento está vacío.
+     */
+    fun pedirMiniatura(id: String) {
+        val render = renderizarPagina ?: return
+        if (_miniaturas.value.containsKey(id)) return
+        val documento = IdDocumento(id)
+        if (!registro.estaAbierto(documento)) return
+
+        viewModelScope.launch {
+            val mapa =
+                withContext(Dispatchers.IO) {
+                    runCatching { render(documento, 0, ESCALA_MINIATURA).aImageBitmap() }.getOrNull()
+                }
+            if (mapa != null) _miniaturas.value = _miniaturas.value + (id to mapa)
+        }
+    }
+
+    private fun refrescarAbiertos() {
+        _abiertos.value = registro.abiertos()
+        // Las miniaturas de documentos ya cerrados no tienen a quién acompañar.
+        val vivos = _abiertos.value.map { it.id.valor }.toSet()
+        _miniaturas.value = _miniaturas.value.filterKeys { it in vivos }
     }
 
     private fun estadoDelFallo(
@@ -95,16 +186,28 @@ class AppViewModel(
         _estado.value = EstadoApp.Inicio
     }
 
+    /**
+     * Vuelve a la pantalla de inicio cerrando el documento que se estaba mirando.
+     *
+     * La flecha de atrás cierra ese documento y sólo ese: los demás siguen abiertos y
+     * se ven en la sección «Abiertos» del inicio.
+     */
     fun volverAlInicio() {
         val actual = _estado.value
         if (actual is EstadoApp.Viendo) {
             viewModelScope.launch {
                 withContext(Dispatchers.IO) { runCatching { cerrarDocumento(actual.id) } }
+                refrescarAbiertos()
                 _estado.value = EstadoApp.Inicio
             }
         } else {
             _estado.value = EstadoApp.Inicio
         }
+    }
+
+    private companion object {
+        /** Una A4 queda en unos 150 x 210 px: de sobra para 36 x 44 dp. */
+        const val ESCALA_MINIATURA = 0.25f
     }
 
     private fun nombreDe(origen: OrigenDocumento): String =

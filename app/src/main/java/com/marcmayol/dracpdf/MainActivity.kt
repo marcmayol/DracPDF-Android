@@ -18,7 +18,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -30,7 +32,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.marcmayol.dracpdf.adaptadores.saf.OrigenesDelSistema
+import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
+import com.marcmayol.dracpdf.dominio.registro.EstadoDocumento
+import com.marcmayol.dracpdf.ui.documentos.DocumentoEnLista
+import com.marcmayol.dracpdf.ui.documentos.HojaDocumentos
 import com.marcmayol.dracpdf.ui.inicio.HojaContrasena
 import com.marcmayol.dracpdf.ui.inicio.PantallaInicio
 import com.marcmayol.dracpdf.ui.tema.TemaDracPDF
@@ -100,6 +106,9 @@ private fun AplicacionDracPDFUi(
     val appModelo: AppViewModel = viewModel(factory = fabricaDe(grafo))
     val visorModelo: VisorViewModel = viewModel(factory = fabricaDe(grafo))
     val estado by appModelo.estado.collectAsStateWithLifecycle()
+    val abiertos by appModelo.abiertos.collectAsStateWithLifecycle()
+    val miniaturasDocs by appModelo.miniaturas.collectAsStateWithLifecycle()
+    var documentosAbiertosVisible by remember { mutableStateOf(false) }
 
     val selector =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -128,6 +137,15 @@ private fun AplicacionDracPDFUi(
             PantallaInicio(
                 alAbrirPdf = { selector.launch(arrayOf(TIPO_PDF)) },
                 temaOscuro = isSystemInDarkTheme(),
+                abiertos =
+                    abiertos.map {
+                        it.aDocumentoEnLista(
+                            activo = false,
+                            miniatura = miniaturasDocs[it.id.valor],
+                        )
+                    },
+                alElegirAbierto = { id -> appModelo.cambiarA(IdDocumento(id)) },
+                alCerrarAbierto = { id -> appModelo.cerrar(IdDocumento(id)) },
             )
 
         is EstadoApp.PidiendoContrasena -> {
@@ -148,7 +166,31 @@ private fun AplicacionDracPDFUi(
             PantallaVisor(
                 modelo = visorModelo,
                 alSalir = appModelo::volverAlInicio,
+                documentosAbiertos = abiertos.size,
+                alAbrirDocumentos = { documentosAbiertosVisible = true },
             )
+
+            if (documentosAbiertosVisible) {
+                HojaDocumentos(
+                    documentos =
+                        abiertos.map { it.aDocumentoEnLista(it.id == actual.id, miniaturasDocs[it.id.valor]) },
+                    alPedirMiniatura = appModelo::pedirMiniatura,
+                    alElegir = { id ->
+                        appModelo.cambiarA(IdDocumento(id))
+                        documentosAbiertosVisible = false
+                    },
+                    alCerrarDocumento = { id -> appModelo.cerrar(IdDocumento(id)) },
+                    alAbrirOtro = {
+                        documentosAbiertosVisible = false
+                        selector.launch(arrayOf(TIPO_PDF))
+                    },
+                    alCerrarTodos = {
+                        documentosAbiertosVisible = false
+                        appModelo.cerrarTodos()
+                    },
+                    alCerrar = { documentosAbiertosVisible = false },
+                )
+            }
         }
 
         is EstadoApp.NoSePudoAbrir ->
@@ -166,6 +208,20 @@ private fun AplicacionDracPDFUi(
     }
 }
 
+/** Traduce lo que sabe el registro a lo que necesita la lista de la interfaz. */
+private fun EstadoDocumento.aDocumentoEnLista(
+    activo: Boolean,
+    miniatura: androidx.compose.ui.graphics.ImageBitmap? = null,
+) = DocumentoEnLista(
+    id = id.valor,
+    nombre = documento.nombre,
+    paginaActual = paginaActual,
+    paginas = documento.paginas,
+    abiertoEn = abiertoEn,
+    activo = activo,
+    miniatura = miniatura,
+)
+
 private fun nombreDe(origen: OrigenDocumento): String =
     when (origen) {
         is OrigenDocumento.Externo -> origen.nombre
@@ -182,7 +238,12 @@ private fun fabricaDe(grafo: Grafo) =
         override fun <T : ViewModel> create(clase: Class<T>): T =
             when {
                 clase.isAssignableFrom(AppViewModel::class.java) ->
-                    AppViewModel(grafo.abrirDocumento, grafo.cerrarDocumento) as T
+                    AppViewModel(
+                        grafo.abrirDocumento,
+                        grafo.cerrarDocumento,
+                        grafo.registro,
+                        grafo.renderizarPagina,
+                    ) as T
 
                 clase.isAssignableFrom(VisorViewModel::class.java) ->
                     VisorViewModel(grafo.renderizarPagina, grafo.registro, grafo.cachePaginas) as T

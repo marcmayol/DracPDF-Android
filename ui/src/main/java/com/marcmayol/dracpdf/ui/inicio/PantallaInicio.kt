@@ -23,6 +23,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.marcmayol.dracpdf.ui.documentos.DocumentoEnLista
+import com.marcmayol.dracpdf.ui.documentos.ListaDocumentos
 import com.marcmayol.dracpdf.ui.iconos.BotonIconoLadon
 import com.marcmayol.dracpdf.ui.iconos.IconosLadon
 import com.marcmayol.dracpdf.ui.tema.FormasLadon
@@ -41,6 +43,9 @@ fun PantallaInicio(
     alAbrirPdf: () -> Unit,
     modifier: Modifier = Modifier,
     temaOscuro: Boolean = true,
+    abiertos: List<DocumentoEnLista> = emptyList(),
+    alElegirAbierto: (String) -> Unit = {},
+    alCerrarAbierto: (String) -> Unit = {},
 ) {
     Column(
         modifier =
@@ -125,6 +130,32 @@ fun PantallaInicio(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 12.dp),
             )
+
+            // «Abiertos» va encima de donde irán los recientes (Fase 7). Es la misma
+            // lista que la hoja del visor y el mismo componente: dos sitios, un
+            // diseño. Sólo aparece si queda algún documento abierto —por ejemplo tras
+            // cerrar el que se estaba mirando teniendo otro detrás—.
+            if (abiertos.isNotEmpty()) {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 34.dp)
+                            .testTag(TAG_SECCION_ABIERTOS),
+                ) {
+                    Text(
+                        text = "ABIERTOS",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+                    )
+                    ListaDocumentos(
+                        documentos = abiertos,
+                        alElegir = alElegirAbierto,
+                        alCerrarDocumento = alCerrarAbierto,
+                    )
+                }
+            }
         }
     }
 }
@@ -134,3 +165,4 @@ private const val OPACIDAD_DRAGON = 0.07f
 const val TAG_ABRIR = "inicio_abrir"
 const val TAG_MENU_INICIO = "inicio_menu"
 const val TAG_DRAGON = "inicio_vacio_dragon"
+const val TAG_SECCION_ABIERTOS = "inicio_abiertos"

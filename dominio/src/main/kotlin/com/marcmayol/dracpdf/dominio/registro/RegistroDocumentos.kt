@@ -15,6 +15,14 @@ data class EstadoDocumento(
     val documento: DocumentoAbierto,
     val paginaActual: Int = 0,
     val zoom: Float = 1f,
+    /**
+     * Cuándo se abrió, en milisegundos del reloj del sistema.
+     *
+     * La lista de documentos abiertos dice «hace 2 min» junto a cada uno, y con
+     * varios abiertos a la vez ese dato es lo que permite distinguirlos cuando los
+     * nombres se parecen.
+     */
+    val abiertoEn: Long = System.currentTimeMillis(),
 ) {
     val id: IdDocumento get() = documento.id
 }
