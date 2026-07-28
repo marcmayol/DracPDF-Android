@@ -48,5 +48,9 @@ dependencies {
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.runner)
+    // Explícito y no transitivo: compose-ui-test arrastra un Espresso antiguo que
+    // llama a InputManager.getInstance(), método que Android 17 ya no tiene. Sin esto
+    // ningún test instrumentado corre en un móvil actual, aunque pase en el emulador.
+    androidTestImplementation(libs.androidx.test.espresso.core)
     debugImplementation(libs.compose.ui.test.manifest)
 }
