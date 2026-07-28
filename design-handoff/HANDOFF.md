@@ -5,7 +5,7 @@ lleva color propio. Retícula 24, trazo 2, terminales redondeados.
 
 ## Estructura
 
-    icons/svg/                 53 SVG fuente, stroke="currentColor" — la verdad de origen
+    icons/svg/                 59 SVG fuente, stroke="currentColor" — la verdad de origen
     icons/android-vector/      los mismos como VectorDrawable (ic_*.xml) para res/drawable/
     icons/qt-tinted/<tema>/    copias pre-tintadas para QIcon (dark, light, accent, ember, muted, disabled)
     android/mipmap-*/          capas del icono adaptativo por densidad (108dp)
@@ -42,6 +42,15 @@ Linux: instalar cada `icon-<px>.png` en `share/icons/hicolor/<px>x<px>/apps/drac
 
 Iconos de toolbar: cargar `icons/svg/*.svg` y sustituir `currentColor` por el token del
 tema en tiempo de ejecución (QSvgRenderer), o usar directamente `icons/qt-tinted/<tema>/`.
+
+## Añadidos en esta revisión
+
+- `save` redibujado: disquete clásico (antes leía como "descargar").
+- `documents` — selector de documentos abiertos (Fase 1, tarea 6).
+- `underline`, `strikethrough` — sí hacen falta: ver §22 del documento de diseño.
+- `text-fix` — "corregir texto": A con onda de corrección, sin el "+" de `text-add`.
+- `table`, `link` — disponibles por si su pantalla los pide.
+- Eliminada la carpeta `icons/png/`: rompía el tintado por tema. Usar SVG o VectorDrawable.
 
 ## Reglas
 

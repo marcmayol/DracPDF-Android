@@ -6,19 +6,19 @@
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:pathData="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"
+        android:pathData="M4.5 4h11.5L20 7.9V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V5.5A1.5 1.5 0 0 1 5.5 4Z"
         android:strokeColor="#FF000000"
         android:strokeWidth="2"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
     <path
-        android:pathData="M12 4v10"
+        android:pathData="M8.5 4v5h7V4"
         android:strokeColor="#FF000000"
         android:strokeWidth="2"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
     <path
-        android:pathData="M8 10.5 12 14.5l4-4"
+        android:pathData="M7.5 20.5V14h9v6.5"
         android:strokeColor="#FF000000"
         android:strokeWidth="2"
         android:strokeLineCap="round"

@@ -162,4 +162,23 @@ object ColoresPapel {
     /** Campo activo, y marco del modo de colocación. */
     val campoActivo = Color(0x0FE0534A)
     val campoActivoBorde = Color(0xFFA83228)
+
+    /** Tinta de la firma dibujada a mano. Nunca se recolorea. */
+    val tinta = Color(0xFF111318)
+}
+
+/**
+ * Los cinco colores del marcado de anotaciones (resaltar, subrayar, tachar).
+ *
+ * También son del papel: una anotación se guarda dentro del PDF y tiene que verse
+ * igual en cualquier otro visor, así que el tema de la aplicación no la toca.
+ */
+object ColoresMarcado {
+    val ambar = Color(0xFFD9B45C)
+    val verde = Color(0xFF6FBF87)
+    val azul = Color(0xFF5B86BD)
+    val rojo = Color(0xFFE07B6E)
+    val morado = Color(0xFFB48AD9)
+
+    val todos = listOf(ambar, verde, azul, rojo, morado)
 }

@@ -4,12 +4,16 @@ import androidx.annotation.DrawableRes
 import com.marcmayol.dracpdf.ui.R
 
 /**
- * Los 53 iconos del paquete de identidad Ladón, tal como los entregó Claude Design.
+ * Los 56 iconos Android del paquete de identidad Ladón, tal como los entregó Claude Design.
  *
  * Los ficheros de `res/drawable/ic_*.xml` son copia literal de
  * `design-handoff/export/icons/android-vector/`: retícula de 24, trazo de 2,
  * terminales redondeados, un solo color. No se redibujan, no se optimizan y no se
  * inventan: si la interfaz necesita un icono que no está aquí, se pide al diseño.
+ *
+ * Son 56 y no los 59 del paquete: `present`, `fullscreen` y `more_horiz` se quedan
+ * fuera porque en móvil no existen —pantalla completa es el modo inmersivo, que no
+ * tiene botón, y el menú es siempre el ⋮ vertical— y viven ahí para el escritorio.
  *
  * El color no viene en el asset —los XML llevan negro literal dentro— sino de quien
  * los pinta. Ver [TintesLadon].
@@ -23,9 +27,14 @@ object IconosLadon {
 
     @DrawableRes val cerrar = R.drawable.ic_close
 
+    /** Los documentos abiertos a la vez. Llegó con la revisión del diseño de julio. */
+    @DrawableRes val documentos = R.drawable.ic_documents
+
     @DrawableRes val comprimir = R.drawable.ic_compress
 
     @DrawableRes val convertir = R.drawable.ic_convert
+
+    @DrawableRes val tabla = R.drawable.ic_table
 
     @DrawableRes val copiar = R.drawable.ic_copy
 
@@ -43,19 +52,21 @@ object IconosLadon {
 
     @DrawableRes val formulario = R.drawable.ic_form_fill
 
-    @DrawableRes val pantallaCompleta = R.drawable.ic_fullscreen
-
     @DrawableRes val irAPagina = R.drawable.ic_goto_page
 
     @DrawableRes val resaltar = R.drawable.ic_highlight
+
+    @DrawableRes val subrayar = R.drawable.ic_underline
+
+    @DrawableRes val tachar = R.drawable.ic_strikethrough
 
     @DrawableRes val anadirImagen = R.drawable.ic_image_add
 
     @DrawableRes val bloquear = R.drawable.ic_lock
 
-    @DrawableRes val unir = R.drawable.ic_merge
+    @DrawableRes val enlace = R.drawable.ic_link
 
-    @DrawableRes val masHorizontal = R.drawable.ic_more_horiz
+    @DrawableRes val unir = R.drawable.ic_merge
 
     @DrawableRes val mas = R.drawable.ic_more_vert
 
@@ -72,8 +83,6 @@ object IconosLadon {
     @DrawableRes val paginaSimple = R.drawable.ic_page_single
 
     @DrawableRes val miniaturas = R.drawable.ic_pages_grid
-
-    @DrawableRes val presentar = R.drawable.ic_present
 
     @DrawableRes val imprimir = R.drawable.ic_print
 
@@ -104,6 +113,9 @@ object IconosLadon {
     @DrawableRes val dividir = R.drawable.ic_split
 
     @DrawableRes val anadirTexto = R.drawable.ic_text_add
+
+    /** Corregir texto existente: la «A» con onda, sin el «+» de añadir. */
+    @DrawableRes val corregirTexto = R.drawable.ic_text_fix
 
     @DrawableRes val tema = R.drawable.ic_theme
 
@@ -136,8 +148,10 @@ object IconosLadon {
             marcador,
             comprobado,
             cerrar,
+            documentos,
             comprimir,
             convertir,
+            tabla,
             copiar,
             asa,
             duplicar,
@@ -146,13 +160,14 @@ object IconosLadon {
             ajustarPagina,
             ajustarAncho,
             formulario,
-            pantallaCompleta,
             irAPagina,
             resaltar,
+            subrayar,
+            tachar,
             anadirImagen,
             bloquear,
+            enlace,
             unir,
-            masHorizontal,
             mas,
             nota,
             abrir,
@@ -161,7 +176,6 @@ object IconosLadon {
             paginaAnterior,
             paginaSimple,
             miniaturas,
-            presentar,
             imprimir,
             propiedades,
             reciente,
@@ -177,6 +191,7 @@ object IconosLadon {
             firmaDibujada,
             dividir,
             anadirTexto,
+            corregirTexto,
             tema,
             herramientas,
             eliminar,
