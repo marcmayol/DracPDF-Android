@@ -105,3 +105,15 @@ Todo bajo **«Convertir a»**, el verbo único de la Fase 6. El escritorio lleg�
 3. CHANGELOG y notas de versión que DracApps muestra
 
 **Criterio F10:** DracPDF Android instalable desde DracApps; una versión posterior detectada y actualizada desde la tienda sin tocar orígenes externos. El E2E real, con el usuario.
+
+## Fase 11: Lector por defecto e integración con otras apps
+
+Objetivo: que DracPDF Android pueda ser el visor de PDF predeterminado del dispositivo y abra con naturalidad los PDFs que llegan desde cualquier app (WhatsApp, Gmail, gestor de archivos, navegador). Requiere la Fase 1 completa (el visor y su flujo SAF/intents); puede ejecutarse en cualquier momento a partir de ella.
+
+1. Intent filters afinados en el manifest: ACTION_VIEW con MIME application/pdf y esquema content (y file para gestores antiguos), categoría DEFAULT; ACTION_SEND para recibir por el share sheet. El afinado tiene un criterio verificable: el selector del sistema debe ofrecer "Siempre" (no solo "Solo una vez") al abrir un PDF desde otra app; si solo ofrece "una vez", el filtro está mal calibrado y se corrige
+2. URIs efímeros bien resueltos: los content:// temporales de FileProvider ajenos (WhatsApp, Gmail) se abren al vuelo en solo lectura; la app distingue documento efímero de persistente: los efímeros ofrecen "Guardar una copia..." (SAF) de forma visible, no entran en recientes como abribles (o entran marcados y al tocarlos, si el URI ya no vive, se gestiona con gracia: aviso limpio, jamás crash), y guardar sobre ellos redirige a "guardar como". takePersistableUriPermission solo donde el sistema lo concede (OPEN_DOCUMENT), nunca asumido en extras de share
+3. Ayuda de predeterminado en Ajustes de la app: sección "Hacer DracPDF el lector por defecto" que explica el mecanismo para no técnicos (elegir DracPDF y "Siempre" en el selector; si otro visor ya es el predeterminado, cómo borrar sus valores predeterminados), con acceso directo a los ajustes de aplicaciones del sistema donde Android lo permita
+4. Matriz de orígenes probada: gestor de archivos, WhatsApp, Gmail y navegador (descarga), verificando en cada uno apertura correcta y comportamiento efímero/persistente según corresponda
+5. Tabla de acciones/pantallas nuevas + test de inventario ampliado
+
+**Criterio F11:** tests sin dispositivo de la lógica de URIs (efímero vs persistente, guardar-copia forzado en efímeros, URI muerto gestionado sin crash); verificación del manifest (filtros presentes con los MIME/esquemas/categorías correctos); y demostración en dispositivo real, con el usuario delante, de la matriz de la tarea 4 incluyendo el selector ofreciendo "Siempre" y un PDF abierto desde WhatsApp de punta a punta. Inventario en verde.
