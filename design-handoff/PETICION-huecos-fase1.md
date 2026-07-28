@@ -46,6 +46,35 @@ Está dibujado en la maqueta «Sin documento» pero nunca desplegado. En la Fase
 sólo habría «Acerca de DracPDF»; conviene saber qué acaba viviendo ahí para no
 tener que rehacerlo (¿Ajustes? ¿Tema? ¿Ayuda?).
 
+## 6 · Hoja de Herramientas: «Convertir» y «Exportar» son la misma cosa
+
+*(No es de la Fase 1, pero conviene resolverlo antes de que la rejilla se
+implemente, y es un cambio de una celda.)*
+
+La maqueta de la hoja de Herramientas tiene nueve acciones, y dos de ellas son
+**«Convertir»** y **«Exportar»** por separado. El DracPDF de escritorio tenía
+esa misma separación y **la eliminó en su versión 0.4.0**, con este motivo
+escrito en el commit:
+
+> Los usuarios leían «Exportar a texto» como una operación distinta de
+> «Convertir a Word». Un único verbo para todo.
+
+Hoy el escritorio tiene un solo submenú «Convertir a» para todas las salidas, y
+su simétrico «Convertir a PDF» para las entradas. Si el móvil mantiene las dos
+entradas, reintroduce el problema que el escritorio ya corrigió con usuarios
+delante.
+
+Se pide: **fundir las dos celdas en una**, «Convertir», y decidir qué ocupa el
+hueco que queda en la rejilla de 3 × 3 (o dejarla en ocho, si la maqueta respira
+mejor así).
+
+### Iconos prestados en esa misma rejilla
+
+La rejilla está dibujada con iconos que no le corresponden —«Convertir» lleva el
+de rotar, «Comprimir» el de guardar y «Proteger» el de verificar—, seguramente
+porque se maquetó antes de cerrar el set. El paquete ya trae `convert`,
+`compress` y `lock` propios. Basta con confirmar que la intención es usarlos.
+
 ## Fuera de la Fase 1, pero conviene saberlo ya
 
 Nada más de lo entregado bloquea las fases siguientes: firma, verificación,

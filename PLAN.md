@@ -61,10 +61,12 @@ Port nativo de DracPDF a Android: visor de PDF con formularios AcroForm, firma d
 
 ## Fase 6: Caja de herramientas
 1. Unir (por SAF multi-selección, sobre rutas/URIs, avisando si uno está abierto con cambios), organizar páginas desde miniaturas (extraer, eliminar, rotar, reordenar con arrastre), dividir por rangos
-2. Proteger/desproteger con contraseña conocida (sin fuerza bruta), comprimir con antes/después, exportar páginas a imágenes y texto
+2. Proteger/desproteger con contraseña conocida (sin fuerza bruta), comprimir con antes/después, y convertir páginas a imágenes y texto
 3. Todas con salida atómica vía SAF, progreso cancelable, y respeto de FIRMADO (operar sobre copia o rechazar)
+4. **Un solo verbo: «convertir».** El escritorio separaba «Exportar a texto» de «Convertir a Word» y lo corrigió en la 0.4.0 porque los usuarios las leían como operaciones distintas; aquí no se reintroduce esa separación. La hoja de Herramientas del diseño trae dos entradas, «Convertir» y «Exportar», que se funden en una sola (pedido a Claude Design). Los casos de uso conservan sus nombres técnicos: la interfaz habla el idioma del usuario, el código el suyo
+5. Los iconos de esa rejilla se toman del paquete y no de la maqueta: está dibujada con iconos prestados —«Convertir» con el de rotar, «Comprimir» con el de guardar, «Proteger» con el de verificar— porque se maquetó antes de tener el set completo, y `ic_convert`, `ic_compress` y `ic_lock` existen
 
-**Criterio F6:** ciclo completo sin UI (unir con orden verificado, dividir, proteger/reabrir/desproteger con igualdad, comprimir con reducción, exportar) con exit 0; operaciones sobre FIRMADO rechazadas. Inventario en verde.
+**Criterio F6:** ciclo completo sin UI (unir con orden verificado, dividir, proteger/reabrir/desproteger con igualdad, comprimir con reducción, convertir a imágenes y texto) con exit 0; operaciones sobre FIRMADO rechazadas. Inventario en verde, con una sola entrada de conversión y los iconos propios del paquete.
 
 ## Fase 7: Fundamentos de visor móvil
 1. Buscar en el documento (barra, resaltados activo/resto, navegación, sin bloquear), selección de texto por gesto largo con handles y copiar/compartir selección
@@ -84,11 +86,18 @@ Port nativo de DracPDF a Android: visor de PDF con formularios AcroForm, firma d
 **Criterio F8:** el del escritorio adaptado: texto/anotaciones/imágenes persistentes tras reabrir, original no extraíble tras corregir, avisos demostrados; con exit 0. Inventario en verde.
 
 ## Fase 9: Conversiones (honestas en móvil)
-1. Salientes con MuPDF: PDF→HTML, PDF→Markdown (heurística de títulos), PDF→texto y PDF→imágenes; detección de escaneados con aviso
-2. PDF→Word y Word→PDF: EVALUACIÓN previa obligatoria antes de comprometerlas: no existen pdf2docx ni mammoth en Android; el diseño de esta fase propone opciones reales (portar lógica, biblioteca Java/Kotlin viable, o declararlas fuera de alcance móvil con el usuario) y SE DECIDE CON EL USUARIO antes de implementar nada
-3. Integración en el menú/acciones según el diseño, con worker y progreso
 
-**Criterio F9:** salientes verificadas sin UI (texto, títulos, imágenes, aviso de escaneado) con exit 0; el alcance de Word decidido y documentado en este plan. Inventario en verde.
+Todo bajo **«Convertir a»**, el verbo único de la Fase 6. El escritorio llegó a la 0.4.0 con un catálogo bastante mayor que el que tenía cuando se escribió este plan (Fase 11 de su plan), así que aquí se decide formato a formato qué se porta, en vez de copiarlo entero: un móvil no es un escritorio y prometer fidelidad que no se puede dar es peor que no ofrecer el formato.
+
+1. Salientes con MuPDF, directas: PDF→HTML, PDF→Markdown (heurística de títulos, la misma deducción de cuerpo/título que el escritorio extrajo a un módulo común), PDF→texto y PDF→imágenes; detección de escaneados con aviso
+2. Imágenes con formato elegible: PNG y JPEG con calidad, ambos nativos del motor. **WEBP** sale de `Bitmap.compress`, que Android trae de fábrica. **TIFF y SVG quedan fuera de alcance móvil**: TIFF no tiene codificador en Android y SVG por página produce ficheros que ningún visor de móvil abre bien; se documenta como decisión, no como olvido
+3. Tablas a **CSV** (`find_tables` del motor, con el mismo recuento previo que el escritorio: cuántas tablas y en qué páginas ANTES de convertir, y si no hay ninguna se dice en vez de escribir ficheros vacíos) y a **XLSX**. El escritorio aprendió que ninguna estrategia de detección sirve sola y ofrece las dos, marcando la aproximada; aquí se hereda esa lección tal cual
+4. **ODT y RTF salientes**: el escritorio los escribe a mano y sin dependencias (zip con `mimetype` sin comprimir + XML el primero, RTF 1.x el segundo) desde su módulo de estructura. Esa lógica es portable a Kotlin sin bibliotecas nuevas, y es la vía prevista
+5. PDF→Word y Word→PDF: EVALUACIÓN previa obligatoria antes de comprometerlas: no existen pdf2docx ni mammoth en Android; el diseño de esta fase propone opciones reales (portar lógica, biblioteca Java/Kotlin viable, o declararlas fuera de alcance móvil con el usuario) y SE DECIDE CON EL USUARIO antes de implementar nada
+6. **Conversiones entrantes (otros formatos → PDF): decisión pendiente del titular.** El escritorio las añadió en su 0.4.0 (imágenes, Markdown, HTML, texto, ODT y RTF a PDF) y en el móvil «fotos → PDF» es probablemente la conversión más pedida que existe. Pero en un teléfono se solapa con escanear con la cámara, que este plan no contempla en ninguna fase, y la diferencia entre las dos cosas no es técnica sino de producto. No se implementa nada de esto hasta decidir con el usuario si entra, y si entra, si lo hace como conversión o como escáner
+7. Integración en el menú/acciones según el diseño, con worker y progreso; todo formato que pierda fidelidad se etiqueta «reformateado» en la interfaz, como en el escritorio: nada de prometer el diseño exacto
+
+**Criterio F9:** salientes verificadas sin UI (texto, títulos, imágenes en PNG/JPEG/WEBP comprobando cabecera mágica, CSV y XLSX comparados celda a celda contra una tabla conocida, ODT y RTF releídos y devolviendo el texto esperado, aviso de escaneado) con exit 0; el alcance de Word y el de las entrantes decididos y documentados en este plan. Inventario en verde bajo una sola entrada de conversión.
 
 ## Fase 10: Distribución vía DracApps
 1. publicar_release.py del repo (patrón de la casa): build firmado con la keystore, verificación de coherencia de versionCode (apkanalyzer vs manifiesto), Release con gh, y alta/actualización en el apps.yaml del catálogo de DracApps
