@@ -86,7 +86,10 @@ fun BarraSuperiorVisor(
  * moverse, se abren hojas.
  */
 @Composable
-fun BarraInferiorVisor(modifier: Modifier = Modifier) {
+fun BarraInferiorVisor(
+    alAbrirIndice: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier =
             modifier
@@ -100,8 +103,8 @@ fun BarraInferiorVisor(modifier: Modifier = Modifier) {
             icono = IconosLadon.marcador,
             etiqueta = "Índice",
             tag = TAG_DESTINO_INDICE,
-            // La pestaña de miniaturas llega en la tarea 7 de esta misma fase.
-            habilitado = false,
+            habilitado = true,
+            alPulsar = alAbrirIndice,
         )
         DestinoInferior(
             icono = IconosLadon.formulario,

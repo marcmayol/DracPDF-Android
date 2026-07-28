@@ -23,6 +23,13 @@ style:
     excludes: ['**/test/**', '**/androidTest/**']
   MaxLineLength:
     maxLineLength: 120
+  ReturnCount:
+    # Cuatro salidas, y las guardas de cabecera aparte: cuando una función tiene que
+    # comprobar tres cosas antes de trabajar —que hay documento, que la página existe,
+    # que no se está pidiendo ya— salir pronto de cada una se lee mejor que anidar el
+    # cuerpo entero dentro de tres if.
+    max: 4
+    excludeGuardClauses: true
   UnusedPrivateMember:
     ignoreAnnotated: ['Preview']
 

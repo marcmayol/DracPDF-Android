@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -70,6 +71,8 @@ fun PantallaVisor(
     // el bitmap que ya hay —gratis, lo hace la GPU— y el render nítido se pide cuando
     // el dedo se detiene. Rasterizar por fotograma daría un tirón en cada uno.
     var zoomVivo by remember { mutableFloatStateOf(estado.zoom) }
+    var indiceAbierto by remember { mutableStateOf(false) }
+    var saltarA by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(estado.zoom) { zoomVivo = estado.zoom }
     LaunchedEffect(zoomVivo) {
         // Cada cambio cancela esta espera; cuando el gesto para, se fija el zoom y
@@ -122,7 +125,30 @@ fun PantallaVisor(
         }
 
         AnimatedVisibility(visible = estado.chromeVisible, enter = fadeIn(), exit = fadeOut()) {
-            BarraInferiorVisor()
+            BarraInferiorVisor(alAbrirIndice = { indiceAbierto = true })
+        }
+    }
+
+    if (indiceAbierto) {
+        val miniaturas by modelo.miniaturas.collectAsState()
+        HojaIndice(
+            paginas = estado.paginas,
+            paginaActual = estado.paginaActual,
+            miniaturas = miniaturas,
+            alPedirMiniatura = modelo::pedirMiniatura,
+            alElegirPagina = { pagina ->
+                modelo.irAPagina(pagina)
+                indiceAbierto = false
+                saltarA = pagina
+            },
+            alCerrar = { indiceAbierto = false },
+        )
+    }
+
+    LaunchedEffect(saltarA) {
+        saltarA?.let { pagina ->
+            lista.scrollToItem(pagina)
+            saltarA = null
         }
     }
 }

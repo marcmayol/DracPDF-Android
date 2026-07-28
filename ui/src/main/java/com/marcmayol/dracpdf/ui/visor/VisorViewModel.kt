@@ -40,6 +40,7 @@ class VisorViewModel(
     private val renderizar: RenderizarPagina,
     private val registro: RegistroDocumentos,
     private val cache: CachePaginas,
+    private val cacheMiniaturas: CachePaginas = CachePaginas(PRESUPUESTO_MINIATURAS),
     private val dispatcherRender: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val _estado = MutableStateFlow(EstadoVisor())
@@ -50,7 +51,13 @@ class VisorViewModel(
     /** Las páginas ya dibujadas y disponibles para pintar. */
     val paginas: StateFlow<Map<ClavePagina, ImageBitmap>> = _paginas.asStateFlow()
 
+    private val _miniaturas = MutableStateFlow<Map<Int, ImageBitmap>>(emptyMap())
+
+    /** Las miniaturas ya dibujadas, por número de página. */
+    val miniaturas: StateFlow<Map<Int, ImageBitmap>> = _miniaturas.asStateFlow()
+
     private val trabajos = ConcurrentHashMap<ClavePagina, Job>()
+    private val trabajosMiniatura = ConcurrentHashMap<Int, Job>()
     private val tamanosReales = ConcurrentHashMap<Int, TamanoPt>()
 
     fun mostrar(id: IdDocumento) {
@@ -135,6 +142,45 @@ class VisorViewModel(
         trabajos[clave] = trabajo
     }
 
+    /**
+     * Pide la miniatura de una página, si no la tiene ya.
+     *
+     * Las miniaturas van a una escala fija y minúscula y **a su propia caché**: no
+     * pueden competir por el presupuesto con las páginas grandes, porque quinientas
+     * miniaturas echarían de la caché justo la página que se está mirando.
+     */
+    fun pedirMiniatura(pagina: Int) {
+        val estado = _estado.value
+        val id = estado.id ?: return
+        if (pagina !in 0 until estado.paginas) return
+        if (_miniaturas.value.containsKey(pagina) || trabajosMiniatura.containsKey(pagina)) return
+
+        val clave = ClavePagina(pagina, CachePaginas.cuantizar(ESCALA_MINIATURA))
+        val enCache = cacheMiniaturas[clave]
+
+        if (enCache != null) {
+            publicar(pagina, enCache)
+        } else {
+            trabajosMiniatura[pagina] =
+                viewModelScope.launch {
+                    val mapa =
+                        withContext(dispatcherRender) {
+                            renderizar(id, pagina, ESCALA_MINIATURA).aImageBitmap()
+                        }
+                    cacheMiniaturas.guardar(clave, mapa)
+                    publicar(pagina, mapa)
+                    trabajosMiniatura.remove(pagina)
+                }
+        }
+    }
+
+    private fun publicar(
+        pagina: Int,
+        miniatura: ImageBitmap,
+    ) {
+        _miniaturas.value = _miniaturas.value + (pagina to miniatura)
+    }
+
     /** Fija el zoom al soltar el pellizco, y con él la escala a la que se rasteriza. */
     fun fijarZoom(zoom: Float) {
         val estado = _estado.value
@@ -161,12 +207,16 @@ class VisorViewModel(
     /** El sistema anda justo de memoria: se suelta todo lo que no se está viendo. */
     fun alApretarLaMemoria() {
         cache.vaciar()
+        cacheMiniaturas.vaciar()
         _paginas.value = emptyMap()
+        _miniaturas.value = emptyMap()
     }
 
     override fun onCleared() {
         trabajos.values.forEach(Job::cancel)
         trabajos.clear()
+        trabajosMiniatura.values.forEach(Job::cancel)
+        trabajosMiniatura.clear()
         super.onCleared()
     }
 
@@ -176,5 +226,17 @@ class VisorViewModel(
 
         const val ZOOM_MINIMO = 0.25f
         const val ZOOM_MAXIMO = 6f
+
+        /**
+         * Escala de las miniaturas: una A4 queda en unos 150 × 210 px, que a 120 dp de
+         * ancho se ve nítida en cualquier densidad razonable.
+         */
+        const val ESCALA_MINIATURA = 0.25f
+
+        /**
+         * Ocho megas para las miniaturas, aparte del presupuesto de las páginas. Con
+         * eso caben unas sesenta a la vez, y la LRU va soltando las que se alejan.
+         */
+        const val PRESUPUESTO_MINIATURAS = 8 * 1024 * 1024
     }
 }
