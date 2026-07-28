@@ -30,5 +30,3 @@ naming:
   FunctionNaming:
     # Los composables van en PascalCase, como manda Compose.
     ignoreAnnotated: ['Composable']
-  TopLevelPropertyNaming:
-    constantPattern: '[A-Z][A-Za-z0-9]*'
