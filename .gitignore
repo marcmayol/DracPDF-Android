@@ -1,0 +1,20 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+/app/release/
+*.apk
+*.aab
+
+# Firma: nunca en el repositorio
+*.jks
+*.keystore
+keystore.properties
+
+# Fixtures: se generan por script, no se versionan
+/fixtures/
