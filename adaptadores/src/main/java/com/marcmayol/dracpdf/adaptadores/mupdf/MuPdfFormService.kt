@@ -7,6 +7,7 @@ import com.artifex.mupdf.fitz.PDFWidget
 import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
 import com.marcmayol.dracpdf.dominio.modelo.FormatoTexto
 import com.marcmayol.dracpdf.dominio.modelo.Formulario
+import com.marcmayol.dracpdf.dominio.modelo.IdCampo
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
 import com.marcmayol.dracpdf.dominio.modelo.RectPt
 import com.marcmayol.dracpdf.dominio.modelo.TipoCampo
@@ -50,6 +51,58 @@ class MuPdfFormService(
             val hoja = documento.loadPage(pagina) as? PDFPage ?: return@en emptyList()
             try {
                 hoja.widgets.orEmpty().mapIndexed { indice, widget -> campoDe(widget, pagina, indice) }
+            } finally {
+                hoja.destroy()
+            }
+        }
+
+    override fun escribirTexto(
+        id: IdDocumento,
+        campo: IdCampo,
+        valor: String,
+    ): CampoFormulario = enElWidget(id, campo) { widget -> widget.setTextValue(valor) }
+
+    override fun alternar(
+        id: IdDocumento,
+        campo: IdCampo,
+    ): CampoFormulario = enElWidget(id, campo) { widget -> widget.toggle() }
+
+    override fun elegirOpcion(
+        id: IdDocumento,
+        campo: IdCampo,
+        opcion: String,
+    ): CampoFormulario = enElWidget(id, campo) { widget -> widget.setChoiceValue(opcion) }
+
+    /**
+     * Aplica un cambio al widget que toca y devuelve el campo tal como queda.
+     *
+     * Los tres pasos están juntos —cargar la página, cambiar, releer— y a propósito:
+     * el `PDFWidget` sólo vive mientras viva su página, así que el valor resultante
+     * hay que leerlo aquí dentro. Sacar el widget fuera para releerlo después sería
+     * leer memoria ya liberada.
+     */
+    private fun enElWidget(
+        id: IdDocumento,
+        campo: IdCampo,
+        cambio: (PDFWidget) -> Unit,
+    ): CampoFormulario =
+        sesiones.en(id) { documento ->
+            val hoja =
+                documento.loadPage(campo.pagina) as? PDFPage
+                    ?: throw IllegalArgumentException("La página ${campo.pagina} no admite formularios")
+            try {
+                val widgets = hoja.widgets.orEmpty()
+                val widget =
+                    widgets.getOrNull(campo.indice)
+                        ?: throw IllegalArgumentException("El campo $campo ya no está en el documento")
+
+                cambio(widget)
+                // Regenera la apariencia del campo: sin esto el valor está en el PDF
+                // pero la página se sigue dibujando con lo de antes, y el usuario cree
+                // que no se ha guardado nada.
+                widget.update()
+
+                campoDe(widget, campo.pagina, campo.indice)
             } finally {
                 hoja.destroy()
             }
@@ -105,12 +158,14 @@ class MuPdfFormService(
         val etiqueta = widget.label?.takeIf { it.isNotBlank() && it != nombre }
         val caja = widget.bounds
         val esTexto = widget.fieldType == PDFWidget.TYPE_TEXT
+        val tipo = tipoDe(widget.fieldType)
         return CampoFormulario(
             nombre = nombre,
             pagina = pagina,
             indice = indice,
-            tipo = tipoDe(widget.fieldType),
+            tipo = tipo,
             valor = widget.value.orEmpty(),
+            marcado = tipo.esMarca && estaEncendido(widget),
             // Los límites ya vienen en el sistema de la página, con su rotación
             // aplicada: los mismos ejes en los que se rasteriza, que es lo que permite
             // al overlay poner el campo encima del hueco dibujado y no al lado.
@@ -124,6 +179,25 @@ class MuPdfFormService(
             maxLongitud = widget.maxLen.takeIf { esTexto && it > 0 },
             formatoTexto = if (esTexto) formatoDe(widget.textFormat) else FormatoTexto.NINGUNO,
         )
+    }
+
+    /**
+     * Si esta casilla o este botón concreto están marcados.
+     *
+     * Se mira el estado de apariencia del widget (`/AS`) y **no** el valor del campo,
+     * porque en un grupo de radio el valor es del grupo: los dos botones dirían que
+     * valen «Si» y los dos saldrían marcados. `/AS` es de cada widget, y es lo que el
+     * propio motor usa para decidir cuál dibuja encendido.
+     */
+    private fun estaEncendido(widget: PDFWidget): Boolean {
+        val estado = widget.`object`?.get("AS")?.asName()
+        return if (estado != null) {
+            estado != CampoFormulario.APAGADO
+        } else {
+            // Sin `/AS` —un PDF mal formado— lo único que queda es el valor del campo.
+            val valor = widget.value.orEmpty()
+            valor.isNotBlank() && valor != CampoFormulario.APAGADO
+        }
     }
 
     private fun tipoDe(tipo: Int): TipoCampo =
@@ -146,6 +220,10 @@ class MuPdfFormService(
             PDFWidget.TX_FORMAT_SPECIAL -> FormatoTexto.ESPECIAL
             else -> FormatoTexto.NINGUNO
         }
+
+    /** Los tipos que se guardan como estado encendido/apagado y no como valor. */
+    private val TipoCampo.esMarca: Boolean
+        get() = this == TipoCampo.CASILLA || this == TipoCampo.RADIO
 
     private companion object {
         /**

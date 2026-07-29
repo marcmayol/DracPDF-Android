@@ -124,9 +124,12 @@ fun BarraDelModo(
     alAbrirIndice: () -> Unit,
     alEntrarEnFormulario: () -> Unit,
     alSalirDelFormulario: () -> Unit,
+    alGuardar: () -> Unit,
     campos: Int,
     modifier: Modifier = Modifier,
     formularioDisponible: Boolean = false,
+    cambiosSinGuardar: Boolean = false,
+    guardando: Boolean = false,
 ) {
     when (modo) {
         ModoVisor.Lectura ->
@@ -141,6 +144,9 @@ fun BarraDelModo(
             BarraFormulario(
                 campos = campos,
                 alSalir = alSalirDelFormulario,
+                alGuardar = alGuardar,
+                cambiosSinGuardar = cambiosSinGuardar,
+                guardando = guardando,
                 modifier = modifier,
             )
     }
@@ -221,6 +227,9 @@ fun BarraFormulario(
     campos: Int,
     alSalir: () -> Unit,
     modifier: Modifier = Modifier,
+    alGuardar: () -> Unit = {},
+    cambiosSinGuardar: Boolean = false,
+    guardando: Boolean = false,
 ) {
     Row(
         modifier =
@@ -235,12 +244,29 @@ fun BarraFormulario(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = if (campos == 1) "1 campo" else "$campos campos",
+            // El estado sin guardar se dice con palabras y no con un punto de color:
+            // «sin guardar» lo entiende cualquiera, un punto naranja no.
+            text =
+                when {
+                    guardando -> "Guardando…"
+                    cambiosSinGuardar -> "Sin guardar"
+                    campos == 1 -> "1 campo"
+                    else -> "$campos campos"
+                },
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 8.dp).testTag(TAG_FORM_CONTADOR),
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
+            BotonIconoLadon(
+                icono = IconosLadon.guardar,
+                descripcion = "Guardar los cambios",
+                alPulsar = alGuardar,
+                // Sin cambios no hay nada que guardar, y guardar dos veces lo mismo
+                // dejaría una revisión vacía en el fichero.
+                habilitado = cambiosSinGuardar && !guardando,
+                modifier = Modifier.testTag(TAG_FORM_GUARDAR),
+            )
             BotonIconoLadon(
                 icono = IconosLadon.paginaAnterior,
                 descripcion = "Campo anterior",
@@ -332,3 +358,4 @@ const val TAG_FORM_CONTADOR = "visor_form_contador"
 const val TAG_FORM_ANTERIOR = "visor_form_anterior"
 const val TAG_FORM_SIGUIENTE = "visor_form_siguiente"
 const val TAG_FORM_HECHO = "visor_form_hecho"
+const val TAG_FORM_GUARDAR = "visor_form_guardar"

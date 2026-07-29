@@ -215,8 +215,7 @@ class InventarioFase1Test {
         val estado = grafo.registro.abiertos().first()
 
         return VisorViewModel(
-            grafo.renderizarPagina,
-            grafo.listarCampos,
+            grafo.casosDelVisor,
             grafo.registro,
             CachePaginas(PRESUPUESTO_PRUEBA),
         ).also { it.mostrar(estado.id) }

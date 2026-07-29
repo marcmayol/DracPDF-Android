@@ -21,8 +21,15 @@ class RepositorioFalso(
 ) : DocumentRepository {
     val renderizadas = mutableListOf<Pair<Int, Float>>()
     val cerrados = mutableListOf<IdDocumento>()
+    val guardados = mutableListOf<IdDocumento>()
     var abiertos = 0
         private set
+
+    /** Lo que diría el motor: si el documento en memoria difiere del fichero. */
+    var cambiosPendientes = false
+
+    /** Para el caso feo: el guardado falla y la marca no se puede quitar. */
+    var fallaAlGuardar = false
 
     override fun abrir(
         id: IdDocumento,
@@ -62,6 +69,14 @@ class RepositorioFalso(
             alto = alto,
             pixeles = ByteArray(ancho * alto * BYTES_POR_PIXEL),
         )
+    }
+
+    override fun tieneCambiosSinGuardar(id: IdDocumento): Boolean = cambiosPendientes
+
+    override fun guardarIncremental(id: IdDocumento) {
+        if (fallaAlGuardar) throw ErrorDocumento.NoSePuedeAbrirElFichero(OrigenDocumento.Privado("/x", "x.pdf"))
+        guardados += id
+        cambiosPendientes = false
     }
 
     override fun cerrar(id: IdDocumento) {

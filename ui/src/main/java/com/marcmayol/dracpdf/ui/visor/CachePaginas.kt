@@ -67,6 +67,21 @@ class CachePaginas(
         cache.evictAll()
     }
 
+    /**
+     * Olvida una página, a todas sus escalas.
+     *
+     * Hace falta al rellenar un campo: lo que hay en la caché es la página de antes de
+     * escribir, y si no se tira, el usuario ve su texto en el overlay pero el papel de
+     * debajo sigue vacío. La página se vuelve a pedir sola en cuanto está a la vista.
+     */
+    fun olvidar(pagina: Int) {
+        cache
+            .snapshot()
+            .keys
+            .filter { it.pagina == pagina }
+            .forEach(cache::remove)
+    }
+
     companion object {
         private const val MEGA = 1024 * 1024
         private const val FRACCION_DE_MEMORIA = 4

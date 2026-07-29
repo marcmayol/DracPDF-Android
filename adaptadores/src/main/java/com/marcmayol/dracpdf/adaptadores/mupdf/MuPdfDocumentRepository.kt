@@ -2,6 +2,8 @@ package com.marcmayol.dracpdf.adaptadores.mupdf
 
 import com.artifex.mupdf.fitz.ColorSpace
 import com.artifex.mupdf.fitz.Matrix
+import com.artifex.mupdf.fitz.PDFDocument
+import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentos
 import com.marcmayol.dracpdf.dominio.modelo.DocumentoAbierto
 import com.marcmayol.dracpdf.dominio.modelo.ErrorDocumento
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
@@ -21,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class MuPdfDocumentRepository(
     private val sesiones: SesionesMuPdf,
+    private val fuente: FuenteDocumentos,
 ) : DocumentRepository {
     /**
      * Cuántas páginas se han rasterizado desde que arrancó. Es la métrica con la que
@@ -96,6 +99,30 @@ class MuPdfDocumentRepository(
             }
         }
 
+    override fun tieneCambiosSinGuardar(id: IdDocumento): Boolean =
+        sesiones.en(id) { documento ->
+            (documento as? PDFDocument)?.hasUnsavedChanges() ?: false
+        }
+
+    /**
+     * Escribe una revisión nueva al final del fichero, con lo que ha cambiado.
+     *
+     * Si el documento no admite guardado incremental —los hay: un PDF reparado al
+     * abrirlo, o uno cuyo índice de objetos MuPDF ha tenido que reconstruir— se
+     * escribe entero. Es lo único que se puede hacer, y no es gratis: el fichero
+     * pierde sus revisiones anteriores. Por eso se comprueba y no se asume.
+     */
+    override fun guardarIncremental(id: IdDocumento) {
+        val origen = sesiones.origenDe(id)
+        sesiones.en(id) { documento ->
+            val pdf = documento as? PDFDocument ?: throw ErrorDocumento.NoSePuedeLeer(origen)
+            val opciones = if (pdf.canBeSavedIncrementally()) OPCIONES_INCREMENTAL else ""
+            fuente.abrirParaEscribir(origen).use { salida ->
+                pdf.save(salida, opciones)
+            }
+        }
+    }
+
     override fun cerrar(id: IdDocumento) {
         sesiones.cerrar(id)
     }
@@ -110,4 +137,12 @@ class MuPdfDocumentRepository(
             is OrigenDocumento.Externo -> origen.nombre
             is OrigenDocumento.Privado -> origen.nombre
         }
+
+    private companion object {
+        /**
+         * Lo que MuPDF entiende por «añade una revisión y no toques lo de antes».
+         * `compress` va con él porque la revisión nueva no tiene por qué ser grande.
+         */
+        const val OPCIONES_INCREMENTAL = "incremental,compress"
+    }
 }

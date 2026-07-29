@@ -10,13 +10,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -55,6 +69,7 @@ fun OverlayCampos(
     campoActivo: IdCampo?,
     alTocarCampo: (CampoFormulario) -> Unit,
     modifier: Modifier = Modifier,
+    alEscribir: (CampoFormulario, String) -> Unit = { _, _ -> },
 ) {
     Box(modifier = modifier.fillMaxSize()) {
         campos.forEach { campo ->
@@ -66,6 +81,7 @@ fun OverlayCampos(
                 altoCampo = alto * (campo.marco.alto / tamano.alto),
                 activo = campo.id == campoActivo,
                 alTocar = { alTocarCampo(campo) },
+                alEscribir = { valor -> alEscribir(campo, valor) },
             )
         }
     }
@@ -80,6 +96,7 @@ private fun CampoDibujado(
     altoCampo: Dp,
     activo: Boolean,
     alTocar: () -> Unit,
+    alEscribir: (String) -> Unit,
 ) {
     // Lo que no se puede rellenar no se resalta. Pintar de ámbar un campo que el
     // emisor bloqueó sería invitar a tocarlo para no dejar escribir después.
@@ -107,8 +124,58 @@ private fun CampoDibujado(
                 .testTag(tagCampo(campo.id)),
         contentAlignment = if (campo.tipo.esMarca) Alignment.Center else Alignment.CenterStart,
     ) {
-        ContenidoDelCampo(campo)
+        if (campo.tipo == TipoCampo.TEXTO && activo && campo.esEditable) {
+            EditorDeTexto(campo = campo, alEscribir = alEscribir)
+        } else {
+            ContenidoDelCampo(campo)
+        }
     }
+}
+
+/**
+ * El campo de texto activo, editable en su sitio.
+ *
+ * **Se escribe en el documento al perder el foco**, no en cada tecla. Cada escritura
+ * hace que el motor regenere la apariencia del campo y vuelva a rasterizar la
+ * página; hacerlo por pulsación convertiría teclear en un tirón continuo. Lo que se
+ * ve mientras tanto es un borrador de pantalla, y en el momento en que el dedo se va
+ * a otro sitio pasa a ser el valor del documento.
+ *
+ * El borrador se reinicia cuando cambia el valor que trae el campo, para que el
+ * texto que devuelve el motor —recortado por `MaxLen`, o reformateado— sea el que
+ * quede a la vista.
+ */
+@Composable
+private fun EditorDeTexto(
+    campo: CampoFormulario,
+    alEscribir: (String) -> Unit,
+) {
+    var borrador by remember(campo.id, campo.valor) { mutableStateOf(campo.valor) }
+    val foco = remember { FocusRequester() }
+    val teclado = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(campo.id) { foco.requestFocus() }
+
+    BasicTextField(
+        value = borrador,
+        onValueChange = { escrito ->
+            // El tope de caracteres es del documento y se respeta aquí también: dejar
+            // teclear de más para recortar al guardar sería enseñar algo que se pierde.
+            borrador = campo.maxLongitud?.let { escrito.take(it) } ?: escrito
+        },
+        textStyle = ESTILO_VALOR,
+        singleLine = !campo.multilinea,
+        cursorBrush = SolidColor(ColoresPapel.tinta),
+        keyboardOptions = KeyboardOptions(imeAction = if (campo.multilinea) ImeAction.Default else ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { teclado?.hide() }),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 3.dp)
+                .focusRequester(foco)
+                .onFocusChanged { estado -> if (!estado.isFocused && borrador != campo.valor) alEscribir(borrador) }
+                .testTag(tagEditor(campo.id)),
+    )
 }
 
 @Composable
@@ -163,3 +230,5 @@ private val TAMANO_MARCA = 8.dp
 private const val MAX_LINEAS_MULTILINEA = 3
 
 fun tagCampo(id: IdCampo): String = "campo_${id.pagina}_${id.indice}"
+
+fun tagEditor(id: IdCampo): String = "editor_${id.pagina}_${id.indice}"

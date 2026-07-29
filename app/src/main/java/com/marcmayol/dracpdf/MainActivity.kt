@@ -247,8 +247,7 @@ private fun fabricaDe(grafo: Grafo) =
 
                 clase.isAssignableFrom(VisorViewModel::class.java) ->
                     VisorViewModel(
-                        grafo.renderizarPagina,
-                        grafo.listarCampos,
+                        grafo.casosDelVisor,
                         grafo.registro,
                         grafo.cachePaginas,
                     ) as T

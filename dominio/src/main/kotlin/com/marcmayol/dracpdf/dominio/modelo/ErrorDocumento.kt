@@ -53,4 +53,16 @@ sealed class ErrorDocumento(
     class NoEstaAbierto(
         val id: IdDocumento,
     ) : ErrorDocumento("El documento ${id.valor} no está abierto")
+
+    /**
+     * Se ha intentado editar un documento firmado.
+     *
+     * No es un capricho ni un error del usuario: cambiar un PDF firmado invalida la
+     * firma, y quien lo intenta casi siempre quiere seguir trabajando, no romperla.
+     * Por eso quien capture esto tiene que ofrecer guardar una copia editable, igual
+     * que en el escritorio, en vez de limitarse a decir que no.
+     */
+    class DocumentoFirmado(
+        val id: IdDocumento,
+    ) : ErrorDocumento("El documento ${id.valor} está firmado: editarlo invalidaría la firma")
 }

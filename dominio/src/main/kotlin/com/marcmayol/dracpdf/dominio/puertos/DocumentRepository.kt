@@ -50,6 +50,25 @@ interface DocumentRepository {
         escala: Float,
     ): PaginaRenderizada
 
+    /**
+     * Si el documento en memoria tiene cambios que aún no están en el fichero.
+     *
+     * Lo sabe el motor, no el registro: el registro anota que alguien tocó algo, pero
+     * el motor sabe si ese algo llegó a cambiar el documento de verdad.
+     */
+    fun tieneCambiosSinGuardar(id: IdDocumento): Boolean
+
+    /**
+     * Escribe los cambios en el propio fichero, **como revisión nueva** y sin tocar
+     * lo que ya había.
+     *
+     * El guardado incremental no es una optimización, es un requisito: un PDF firmado
+     * conserva sus firmas válidas sólo si las revisiones anteriores siguen ahí, byte
+     * a byte. Reescribir el fichero entero rompería toda firma previa, incluidas las
+     * de terceros, y eso no se puede deshacer.
+     */
+    fun guardarIncremental(id: IdDocumento)
+
     /** Libera el documento. Después de esto su [IdDocumento] ya no vale. */
     fun cerrar(id: IdDocumento)
 }

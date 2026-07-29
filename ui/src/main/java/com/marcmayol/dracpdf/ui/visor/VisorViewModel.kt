@@ -3,9 +3,12 @@ package com.marcmayol.dracpdf.ui.visor
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
+import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
+import com.marcmayol.dracpdf.dominio.modelo.ErrorDocumento
 import com.marcmayol.dracpdf.dominio.modelo.Formulario
 import com.marcmayol.dracpdf.dominio.modelo.IdCampo
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
@@ -35,6 +38,11 @@ data class EstadoVisor(
     /** El formulario del documento; `null` mientras no se ha averiguado. */
     val formulario: Formulario? = null,
     val campoActivo: IdCampo? = null,
+    /** Si hay algo escrito que todavía no está en el fichero. */
+    val cambiosSinGuardar: Boolean = false,
+    val guardando: Boolean = false,
+    /** Lo último que salió mal, para decirlo y no tragárselo. */
+    val error: String? = null,
     /** El aviso pendiente sobre el formulario, si hay alguno que dar. */
     val aviso: AvisoFormulario? = null,
 ) {
@@ -66,16 +74,35 @@ enum class AvisoFormulario {
 }
 
 /**
+ * Lo que el visor sabe hacer con un documento, en un solo bulto.
+ *
+ * Van juntos porque siempre viajan juntos: cada uno por su lado convertía el
+ * constructor en una lista de la compra donde el orden de los argumentos era el único
+ * que sabía qué es cada cosa.
+ */
+class CasosDelVisor(
+    val renderizar: RenderizarPagina,
+    val listarCampos: ListarCampos,
+    val rellenar: RellenarCampo,
+    val guardar: GuardarDocumento,
+)
+
+/**
  * El visor.
  *
- * Dos ideas gobiernan esto y las dos vienen del criterio de la fase: **no se
+ * Dos ideas gobiernan esto y las dos vienen del criterio de la Fase 1: **no se
  * rasteriza lo que no se ve** y **el tamaño de una página se sabe sin dibujarla**.
  * La segunda es la que permite cumplir la primera sin que el scroll pegue saltos: la
  * lista reserva el hueco con la proporción correcta y el bitmap llega después.
+ *
+ * Concentra bastantes acciones, y es a conciencia: el diseño manda que sea el modo
+ * quien decida la pantalla, así que los modos comparten documento, caché y estado de
+ * página. Repartirlos en varios modelos obligaría a mantenerlos sincronizados entre
+ * sí, que es peor problema que una clase con muchas funciones.
  */
+@Suppress("TooManyFunctions")
 class VisorViewModel(
-    private val renderizar: RenderizarPagina,
-    private val listarCampos: ListarCampos,
+    private val casos: CasosDelVisor,
     private val registro: RegistroDocumentos,
     private val cache: CachePaginas,
     private val cacheMiniaturas: CachePaginas = CachePaginas(PRESUPUESTO_MINIATURAS),
@@ -122,7 +149,7 @@ class VisorViewModel(
                 zoom = estadoDocumento.zoom,
             )
         viewModelScope.launch {
-            val formulario = withContext(dispatcherRender) { listarCampos.formulario(id) }
+            val formulario = withContext(dispatcherRender) { casos.listarCampos.formulario(id) }
             _estado.value = _estado.value.copy(formulario = formulario, aviso = avisoDe(formulario))
         }
         viewModelScope.launch {
@@ -130,7 +157,7 @@ class VisorViewModel(
             // ningún documento mezcla formatos, y pedir las 500 al abrir costaría el
             // presupuesto entero de los dos segundos. Cada página corrige su hueco en
             // cuanto se conoce su tamaño real.
-            val primera = withContext(dispatcherRender) { renderizar.tamano(id, 0) }
+            val primera = withContext(dispatcherRender) { casos.renderizar.tamano(id, 0) }
             tamanosReales[0] = primera
             _estado.value = _estado.value.copy(tamanoEstimado = primera)
         }
@@ -194,7 +221,7 @@ class VisorViewModel(
             .forEach { pagina ->
                 trabajosCampos[pagina] =
                     viewModelScope.launch {
-                        val delaPagina = withContext(dispatcherRender) { listarCampos(id, pagina) }
+                        val delaPagina = withContext(dispatcherRender) { casos.listarCampos(id, pagina) }
                         _campos.value = _campos.value + (pagina to delaPagina)
                         trabajosCampos.remove(pagina)
                     }
@@ -218,8 +245,8 @@ class VisorViewModel(
             viewModelScope.launch {
                 val mapa =
                     withContext(dispatcherRender) {
-                        renderizar(id, pagina, CachePaginas.escalaDe(clave.escalaCuantizada)).let {
-                            tamanosReales.putIfAbsent(pagina, renderizar.tamano(id, pagina))
+                        casos.renderizar(id, pagina, CachePaginas.escalaDe(clave.escalaCuantizada)).let {
+                            tamanosReales.putIfAbsent(pagina, casos.renderizar.tamano(id, pagina))
                             it.aImageBitmap()
                         }
                     }
@@ -253,7 +280,7 @@ class VisorViewModel(
                 viewModelScope.launch {
                     val mapa =
                         withContext(dispatcherRender) {
-                            renderizar(id, pagina, ESCALA_MINIATURA).aImageBitmap()
+                            casos.renderizar(id, pagina, ESCALA_MINIATURA).aImageBitmap()
                         }
                     cacheMiniaturas.guardar(clave, mapa)
                     publicar(pagina, mapa)
@@ -308,6 +335,100 @@ class VisorViewModel(
         if (_estado.value.modo != ModoVisor.Formulario) return
         _estado.value = _estado.value.copy(campoActivo = id)
     }
+
+    /**
+     * Escribe un campo de texto. Lo llama la interfaz **al perder el foco**, no en
+     * cada tecla: escribir en el documento por pulsación regeneraría la apariencia del
+     * campo treinta veces por palabra, y cada una es trabajo del motor.
+     */
+    fun escribirTexto(
+        campo: IdCampo,
+        valor: String,
+    ) = cambiarCampo(campo) { id -> casos.rellenar.texto(id, campo, valor) }
+
+    /** Marca o desmarca una casilla, o elige un botón de radio. */
+    fun alternarCampo(campo: IdCampo) = cambiarCampo(campo) { id -> casos.rellenar.alternar(id, campo) }
+
+    /** Elige una opción de un combo o de una lista. */
+    fun elegirOpcion(
+        campo: IdCampo,
+        opcion: String,
+    ) = cambiarCampo(campo) { id -> casos.rellenar.elegir(id, campo, opcion) }
+
+    /**
+     * Lo común a los tres: cambiar, reflejarlo en el overlay y **tirar el render de
+     * esa página**.
+     *
+     * Lo tercero es lo que se olvida: el valor ya está en el documento, pero en la
+     * caché sigue la página de antes de escribirlo. Sin tirarla, el usuario ve su
+     * texto en el overlay flotando sobre un papel que sigue en blanco, y no sabe si
+     * se ha guardado algo o no.
+     */
+    private fun cambiarCampo(
+        campo: IdCampo,
+        accion: (IdDocumento) -> CampoFormulario,
+    ) {
+        val estado = _estado.value
+        val id = estado.id ?: return
+        if (estado.modo != ModoVisor.Formulario) return
+
+        viewModelScope.launch {
+            val resultado = runCatching { withContext(dispatcherRender) { accion(id) } }
+            resultado
+                .onSuccess { actualizado ->
+                    _campos.value =
+                        _campos.value.mapValues { (pagina, lista) ->
+                            if (pagina != campo.pagina) lista else lista.map { if (it.id == campo) actualizado else it }
+                        }
+                    cache.olvidar(campo.pagina)
+                    _paginas.value = _paginas.value.filterKeys { it.pagina != campo.pagina }
+                    _estado.value = _estado.value.copy(cambiosSinGuardar = true, error = null)
+                    pedir(id, campo.pagina, _estado.value.zoom)
+                }.onFailure { fallo ->
+                    _estado.value = _estado.value.copy(error = mensajeDe(fallo))
+                }
+        }
+    }
+
+    /**
+     * Escribe en el fichero lo que se lleva rellenado.
+     *
+     * Guardar es una acción del usuario y no un efecto de escribir: un guardado por
+     * pulsación dejaría una revisión nueva en el fichero por cada letra.
+     */
+    fun guardar() {
+        val estado = _estado.value
+        val id = estado.id ?: return
+        if (estado.guardando) return
+
+        _estado.value = estado.copy(guardando = true)
+        viewModelScope.launch {
+            val resultado = runCatching { withContext(dispatcherRender) { casos.guardar(id) } }
+            _estado.value =
+                resultado.fold(
+                    onSuccess = { _estado.value.copy(guardando = false, cambiosSinGuardar = false, error = null) },
+                    onFailure = { fallo ->
+                        // La marca no se limpia: no se ha guardado, y decir lo contrario
+                        // sería la forma más limpia de que alguien pierda su trabajo.
+                        _estado.value.copy(guardando = false, error = mensajeDe(fallo))
+                    },
+                )
+        }
+    }
+
+    fun descartarError() {
+        _estado.value = _estado.value.copy(error = null)
+    }
+
+    private fun mensajeDe(fallo: Throwable): String =
+        when (fallo) {
+            is ErrorDocumento.DocumentoFirmado ->
+                "Este documento está firmado: editarlo invalidaría la firma. Guarda una copia editable."
+
+            is ErrorDocumento.SinPermiso -> "Ya no hay permiso para escribir en este documento."
+            is ErrorDocumento -> fallo.message ?: "No se ha podido completar la operación."
+            else -> "No se ha podido completar la operación."
+        }
 
     /** El usuario ha leído el aviso. No se repite mientras el documento siga abierto. */
     fun descartarAviso() {

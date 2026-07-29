@@ -38,7 +38,7 @@ class MuPdfDocumentRepositoryTest {
         val contexto = InstrumentationRegistry.getInstrumentation().targetContext
         carpeta = File(contexto.cacheDir, "fixtures").apply { mkdirs() }
         fuente = FuenteDocumentosAndroid(contexto.contentResolver)
-        repositorio = MuPdfDocumentRepository(SesionesMuPdf(fuente))
+        repositorio = MuPdfDocumentRepository(SesionesMuPdf(fuente), fuente)
     }
 
     private fun assertCerca(

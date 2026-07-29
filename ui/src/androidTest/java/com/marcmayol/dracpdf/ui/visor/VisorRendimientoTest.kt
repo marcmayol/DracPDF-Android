@@ -10,7 +10,9 @@ import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfFormService
 import com.marcmayol.dracpdf.adaptadores.mupdf.SesionesMuPdf
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
+import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
+import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
@@ -45,8 +47,9 @@ class VisorRendimientoTest {
                 paginas = PAGINAS,
             )
 
-        val sesiones = SesionesMuPdf(FuenteDocumentosAndroid(contexto.contentResolver))
-        val repositorio = MuPdfDocumentRepository(sesiones)
+        val fuente = FuenteDocumentosAndroid(contexto.contentResolver)
+        val sesiones = SesionesMuPdf(fuente)
+        val repositorio = MuPdfDocumentRepository(sesiones, fuente)
         val registro = RegistroDocumentos()
         val abrir = AbrirDocumento(repositorio, registro)
 
@@ -60,8 +63,12 @@ class VisorRendimientoTest {
         val cache = CachePaginas(CachePaginas.presupuestoPara(contexto))
         val modelo =
             VisorViewModel(
-                RenderizarPagina(repositorio, registro),
-                ListarCampos(MuPdfFormService(sesiones), registro),
+                CasosDelVisor(
+                    RenderizarPagina(repositorio, registro),
+                    ListarCampos(MuPdfFormService(sesiones), registro),
+                    RellenarCampo(MuPdfFormService(sesiones), registro),
+                    GuardarDocumento(repositorio, registro),
+                ),
                 registro,
                 cache,
             )

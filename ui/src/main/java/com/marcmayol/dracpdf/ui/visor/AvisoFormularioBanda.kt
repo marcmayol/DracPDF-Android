@@ -87,5 +87,50 @@ private fun textoDe(aviso: AvisoFormulario): String =
                 "la que ven todos los visores; Adobe Acrobat podría seguir mostrando la otra."
     }
 
+/**
+ * Lo que ha salido mal, dicho y no tragado.
+ *
+ * Va abajo y no arriba porque llega como consecuencia de algo que se acaba de hacer
+ * —guardar, rellenar— y ahí es donde está mirando el pulgar.
+ */
+@Composable
+fun BandaError(
+    mensaje: String,
+    alDescartar: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.errorContainer)
+                .heightIn(min = MedidasLadon.areaTactil)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .testTag(TAG_BANDA_ERROR),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = mensaje,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "Cerrar",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            modifier =
+                Modifier
+                    .heightIn(min = MedidasLadon.areaTactil)
+                    .clickable(onClick = alDescartar)
+                    .padding(horizontal = 8.dp, vertical = 12.dp)
+                    .testTag(TAG_BANDA_ERROR_CERRAR),
+        )
+    }
+}
+
 const val TAG_AVISO_FORMULARIO = "visor_aviso_formulario"
 const val TAG_AVISO_DESCARTAR = "visor_aviso_descartar"
+const val TAG_BANDA_ERROR = "visor_banda_error"
+const val TAG_BANDA_ERROR_CERRAR = "visor_banda_error_cerrar"

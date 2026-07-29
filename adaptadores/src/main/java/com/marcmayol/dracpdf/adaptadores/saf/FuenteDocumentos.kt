@@ -17,6 +17,12 @@ import java.nio.channels.FileChannel
  */
 interface FuenteDocumentos {
     fun abrir(origen: OrigenDocumento): SeekableInputStream
+
+    /**
+     * El mismo documento, abierto para leer y escribir. Es lo que necesita el
+     * guardado incremental, que añade una revisión sin tocar lo anterior.
+     */
+    fun abrirParaEscribir(origen: OrigenDocumento): FlujoEscritura
 }
 
 /** La fuente real: Storage Access Framework para lo externo, fichero para lo privado. */
@@ -36,6 +42,18 @@ class FuenteDocumentosAndroid(
         } catch (e: IOException) {
             // No se ha llegado al fichero. Que el contenido sea o no un PDF es una
             // pregunta que aquí ni siquiera ha llegado a hacerse.
+            throw ErrorDocumento.NoSePuedeAbrirElFichero(origen, e)
+        }
+
+    override fun abrirParaEscribir(origen: OrigenDocumento): FlujoEscritura =
+        try {
+            when (origen) {
+                is OrigenDocumento.Externo -> FlujoEscritura.de(resolver, Uri.parse(origen.identificador))
+                is OrigenDocumento.Privado -> FlujoEscritura.de(File(origen.identificador))
+            }
+        } catch (e: SecurityException) {
+            throw ErrorDocumento.SinPermiso(origen).initCause(e) as ErrorDocumento
+        } catch (e: IOException) {
             throw ErrorDocumento.NoSePuedeAbrirElFichero(origen, e)
         }
 }

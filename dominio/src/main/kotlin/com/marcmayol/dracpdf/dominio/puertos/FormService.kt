@@ -2,6 +2,7 @@ package com.marcmayol.dracpdf.dominio.puertos
 
 import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
 import com.marcmayol.dracpdf.dominio.modelo.Formulario
+import com.marcmayol.dracpdf.dominio.modelo.IdCampo
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
 
 /**
@@ -30,4 +31,35 @@ interface FormService {
         id: IdDocumento,
         pagina: Int,
     ): List<CampoFormulario>
+
+    /**
+     * Escribe el valor de un campo de texto y devuelve cómo queda.
+     *
+     * Devuelve el campo releído del documento en vez del valor que se le pasó, y no
+     * es lo mismo: el PDF puede recortar por `MaxLen` o reformatear un número, y lo
+     * que hay que enseñar en pantalla es lo que quedó guardado, no lo que se tecleó.
+     */
+    fun escribirTexto(
+        id: IdDocumento,
+        campo: IdCampo,
+        valor: String,
+    ): CampoFormulario
+
+    /**
+     * Cambia el estado de una casilla o de un botón de radio.
+     *
+     * Es el motor quien lo hace y no esta aplicación, porque marcar un radio significa
+     * desmarcar a sus hermanos de grupo, y el grupo lo conoce el documento.
+     */
+    fun alternar(
+        id: IdDocumento,
+        campo: IdCampo,
+    ): CampoFormulario
+
+    /** Elige una opción de un combo o de una lista. */
+    fun elegirOpcion(
+        id: IdDocumento,
+        campo: IdCampo,
+        opcion: String,
+    ): CampoFormulario
 }

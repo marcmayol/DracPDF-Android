@@ -107,10 +107,23 @@ data class CampoFormulario(
     /** Posición del campo dentro de su página. Junto con la página, la identidad. */
     val indice: Int,
     val tipo: TipoCampo,
+    /**
+     * El valor del **campo**. En un grupo de radio es el del grupo entero, así que
+     * los dos botones de un mismo grupo tienen aquí lo mismo aunque sólo uno esté
+     * elegido: para saber cuál, está [marcado].
+     */
     val valor: String,
     val marco: RectPt,
     /** Lo que el PDF quiere que se muestre al usuario, si lo trae. */
     val etiqueta: String? = null,
+    /**
+     * Si esta casilla o este botón de radio están marcados.
+     *
+     * Es un dato de **este** widget y no del campo, que es justo la diferencia que un
+     * grupo de radio necesita: los dos botones comparten nombre y valor, y sólo uno
+     * está elegido. Deducirlo del valor marcaría el grupo entero.
+     */
+    val marcado: Boolean = false,
     val opciones: List<String> = emptyList(),
     val soloLectura: Boolean = false,
     val obligatorio: Boolean = false,
@@ -122,22 +135,18 @@ data class CampoFormulario(
 ) {
     val id: IdCampo get() = IdCampo(pagina, indice)
 
-    /**
-     * Si una casilla o un radio están marcados.
-     *
-     * El estándar guarda el estado apagado como el nombre `Off`, y el encendido como
-     * el nombre que el propio PDF le haya puesto —`Yes`, `On`, `Si`, lo que sea—. Por
-     * eso se pregunta por lo que **no** es, que es lo único que el estándar fija.
-     */
-    val marcado: Boolean
-        get() = valor.isNotBlank() && !valor.equals(APAGADO, ignoreCase = false)
-
     /** Si el usuario puede cambiarlo desde el overlay de la Fase 2. */
     val esEditable: Boolean
         get() = !soloLectura && tipo != TipoCampo.BOTON && tipo != TipoCampo.FIRMA && tipo != TipoCampo.DESCONOCIDO
 
     companion object {
-        /** El valor «apagado» de casillas y radios, tal como lo nombra el estándar. */
+        /**
+         * El estado «apagado» de casillas y radios, tal como lo nombra el estándar.
+         *
+         * El encendido, en cambio, no lo fija nadie: cada PDF lo llama como quiere
+         * —`Yes`, `On`, `Si`—, así que lo único que se puede comprobar con certeza es
+         * que algo **no** está apagado.
+         */
         const val APAGADO = "Off"
     }
 }

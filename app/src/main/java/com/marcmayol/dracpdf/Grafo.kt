@@ -7,10 +7,13 @@ import com.marcmayol.dracpdf.adaptadores.mupdf.SesionesMuPdf
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
 import com.marcmayol.dracpdf.dominio.casos.CerrarDocumento
+import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
+import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
 import com.marcmayol.dracpdf.ui.visor.CachePaginas
+import com.marcmayol.dracpdf.ui.visor.CasosDelVisor
 
 /**
  * Las dependencias de la aplicación, montadas a mano.
@@ -32,15 +35,21 @@ class Grafo(
      * repositorio y el servicio de formularios tienen que entrar al mismo documento
      * por el mismo hilo.
      */
-    private val sesiones = SesionesMuPdf(FuenteDocumentosAndroid(contexto.contentResolver))
+    private val fuente = FuenteDocumentosAndroid(contexto.contentResolver)
+    private val sesiones = SesionesMuPdf(fuente)
 
-    val repositorio = MuPdfDocumentRepository(sesiones)
+    val repositorio = MuPdfDocumentRepository(sesiones, fuente)
     val formularios = MuPdfFormService(sesiones)
 
     val abrirDocumento = AbrirDocumento(repositorio, registro)
     val renderizarPagina = RenderizarPagina(repositorio, registro)
     val cerrarDocumento = CerrarDocumento(repositorio, registro)
     val listarCampos = ListarCampos(formularios, registro)
+    val rellenarCampo = RellenarCampo(formularios, registro)
+    val guardarDocumento = GuardarDocumento(repositorio, registro)
+
+    /** Lo que el visor necesita, ya montado. */
+    val casosDelVisor = CasosDelVisor(renderizarPagina, listarCampos, rellenarCampo, guardarDocumento)
 
     val cachePaginas = CachePaginas(CachePaginas.presupuestoPara(contexto))
 

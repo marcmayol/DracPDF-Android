@@ -71,9 +71,12 @@ class SesionesMuPdf(
                 throw e
             }
 
-        documentos[id] = Sesion(documento, flujo, hilo)
+        documentos[id] = Sesion(documento, flujo, hilo, origen)
         return resultado
     }
+
+    /** De dónde salió el documento, que es también dónde hay que guardarlo. */
+    fun origenDe(id: IdDocumento): OrigenDocumento = documentos[id]?.origen ?: throw ErrorDocumento.NoEstaAbierto(id)
 
     /**
      * Ejecuta [bloque] en el hilo del documento [id] y espera el resultado.
@@ -162,6 +165,7 @@ class SesionesMuPdf(
         val documento: Document,
         val flujo: SeekableInputStream,
         val hilo: ExecutorService,
+        val origen: OrigenDocumento,
     )
 
     private companion object {

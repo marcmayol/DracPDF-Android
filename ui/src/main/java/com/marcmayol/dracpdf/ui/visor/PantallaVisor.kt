@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
 import com.marcmayol.dracpdf.dominio.modelo.TamanoPt
+import com.marcmayol.dracpdf.dominio.modelo.TipoCampo
 import com.marcmayol.dracpdf.ui.tema.ColoresPapel
 import com.marcmayol.dracpdf.ui.tema.MedidasLadon
 import kotlinx.coroutines.delay
@@ -78,6 +79,7 @@ fun PantallaVisor(
     var zoomVivo by remember { mutableFloatStateOf(estado.zoom) }
     var indiceAbierto by remember { mutableStateOf(false) }
     var saltarA by remember { mutableStateOf<Int?>(null) }
+    var opcionesDe by remember { mutableStateOf<CampoFormulario?>(null) }
     LaunchedEffect(estado.zoom) { zoomVivo = estado.zoom }
     LaunchedEffect(zoomVivo) {
         // Cada cambio cancela esta espera; cuando el gesto para, se fija el zoom y
@@ -126,7 +128,17 @@ fun PantallaVisor(
                 lista = lista,
                 zoomVivo = zoomVivo,
                 tamanoDe = modelo::tamanoDe,
-                alTocarCampo = { campo -> modelo.activarCampo(campo.id) },
+                // Cada tipo de campo se toca de una manera: una casilla cambia sola,
+                // una elección abre su lista, y un texto se pone a esperar teclas.
+                alTocarCampo = { campo ->
+                    modelo.activarCampo(campo.id)
+                    when (campo.tipo) {
+                        TipoCampo.CASILLA, TipoCampo.RADIO -> modelo.alternarCampo(campo.id)
+                        TipoCampo.COMBO, TipoCampo.LISTA -> opcionesDe = campo
+                        else -> Unit
+                    }
+                },
+                alEscribirCampo = { campo, valor -> modelo.escribirTexto(campo.id, valor) },
                 alTocar = modelo::alternarChrome,
                 alDobleTocar = {
                     modelo.fijarZoom(if (estado.zoom > AJUSTE_ANCHO) AJUSTE_ANCHO else CIEN_POR_CIEN)
@@ -150,10 +162,28 @@ fun PantallaVisor(
                 alAbrirIndice = { indiceAbierto = true },
                 alEntrarEnFormulario = modelo::entrarEnFormulario,
                 alSalirDelFormulario = modelo::salirDelFormulario,
+                alGuardar = modelo::guardar,
                 campos = estado.formulario?.campos ?: 0,
                 formularioDisponible = estado.hayFormulario,
+                cambiosSinGuardar = estado.cambiosSinGuardar,
+                guardando = estado.guardando,
             )
         }
+    }
+
+    estado.error?.let { error ->
+        BandaError(mensaje = error, alDescartar = modelo::descartarError)
+    }
+
+    opcionesDe?.let { campo ->
+        HojaOpciones(
+            campo = campo,
+            alElegir = { opcion ->
+                modelo.elegirOpcion(campo.id, opcion)
+                opcionesDe = null
+            },
+            alCerrar = { opcionesDe = null },
+        )
     }
 
     if (indiceAbierto) {
@@ -189,6 +219,7 @@ private fun ListaDePaginas(
     zoomVivo: Float,
     tamanoDe: (Int) -> TamanoPt?,
     alTocarCampo: (CampoFormulario) -> Unit,
+    alEscribirCampo: (CampoFormulario, String) -> Unit,
     alTocar: () -> Unit,
     alDobleTocar: () -> Unit,
     alPellizcar: (Float) -> Unit,
@@ -242,6 +273,7 @@ private fun ListaDePaginas(
                                 alto = anchoPagina * proporcion,
                                 campoActivo = estado.campoActivo,
                                 alTocarCampo = alTocarCampo,
+                                alEscribir = alEscribirCampo,
                             )
                         }
                     }

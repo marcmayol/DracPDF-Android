@@ -33,6 +33,7 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class MuPdfFormServiceTest {
     private lateinit var carpeta: File
+    private lateinit var fuente: FuenteDocumentosAndroid
     private lateinit var sesiones: SesionesMuPdf
     private lateinit var repositorio: MuPdfDocumentRepository
     private lateinit var formularios: MuPdfFormService
@@ -41,8 +42,9 @@ class MuPdfFormServiceTest {
     fun preparar() {
         val contexto = InstrumentationRegistry.getInstrumentation().targetContext
         carpeta = File(contexto.cacheDir, "fixtures").apply { mkdirs() }
-        sesiones = SesionesMuPdf(FuenteDocumentosAndroid(contexto.contentResolver))
-        repositorio = MuPdfDocumentRepository(sesiones)
+        fuente = FuenteDocumentosAndroid(contexto.contentResolver)
+        sesiones = SesionesMuPdf(fuente)
+        repositorio = MuPdfDocumentRepository(sesiones, fuente)
         formularios = MuPdfFormService(sesiones)
     }
 
