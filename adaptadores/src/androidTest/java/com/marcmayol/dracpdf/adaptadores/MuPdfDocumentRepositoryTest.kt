@@ -5,6 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.artifex.mupdf.fitz.SeekableInputStream
 import com.marcmayol.dracpdf.adaptadores.fixtures.GeneradorFixtures
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfDocumentRepository
+import com.marcmayol.dracpdf.adaptadores.mupdf.SesionesMuPdf
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentos
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
 import com.marcmayol.dracpdf.dominio.modelo.ErrorDocumento
@@ -37,7 +38,7 @@ class MuPdfDocumentRepositoryTest {
         val contexto = InstrumentationRegistry.getInstrumentation().targetContext
         carpeta = File(contexto.cacheDir, "fixtures").apply { mkdirs() }
         fuente = FuenteDocumentosAndroid(contexto.contentResolver)
-        repositorio = MuPdfDocumentRepository(fuente)
+        repositorio = MuPdfDocumentRepository(SesionesMuPdf(fuente))
     }
 
     private fun assertCerca(
