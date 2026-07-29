@@ -4,12 +4,15 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.marcmayol.dracpdf.adaptadores.firmas.AlmacenFirmasFichero
 import com.marcmayol.dracpdf.adaptadores.fixtures.GeneradorFixtures
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfDocumentRepository
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfFormService
+import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfStampService
 import com.marcmayol.dracpdf.adaptadores.mupdf.SesionesMuPdf
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
+import com.marcmayol.dracpdf.dominio.casos.EstamparFirma
 import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
 import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
@@ -68,6 +71,12 @@ class VisorRendimientoTest {
                     ListarCampos(MuPdfFormService(sesiones), registro),
                     RellenarCampo(MuPdfFormService(sesiones), registro),
                     GuardarDocumento(repositorio, registro),
+                    EstamparFirma(
+                        MuPdfStampService(sesiones),
+                        AlmacenFirmasFichero(File(contexto.cacheDir, "firmas-test")),
+                        repositorio,
+                        registro,
+                    ),
                 ),
                 registro,
                 cache,

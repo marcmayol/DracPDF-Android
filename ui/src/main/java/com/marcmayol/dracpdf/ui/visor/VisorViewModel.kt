@@ -3,15 +3,18 @@ package com.marcmayol.dracpdf.ui.visor
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.marcmayol.dracpdf.dominio.casos.EstamparFirma
 import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
 import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
 import com.marcmayol.dracpdf.dominio.modelo.ErrorDocumento
+import com.marcmayol.dracpdf.dominio.modelo.Firma
 import com.marcmayol.dracpdf.dominio.modelo.Formulario
 import com.marcmayol.dracpdf.dominio.modelo.IdCampo
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
+import com.marcmayol.dracpdf.dominio.modelo.RectPt
 import com.marcmayol.dracpdf.dominio.modelo.TamanoPt
 import com.marcmayol.dracpdf.dominio.modelo.TipoFormulario
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
@@ -59,6 +62,8 @@ data class EstadoVisor(
     val hayCampoSiguiente: Boolean = false,
     /** El aviso pendiente sobre el formulario, si hay alguno que dar. */
     val aviso: AvisoFormulario? = null,
+    /** La firma que se está colocando, si hay alguna en el aire. */
+    val colocacion: ColocacionFirma? = null,
 ) {
     /** Si hay formulario que rellenar, que es lo que habilita el modo. */
     val hayFormulario: Boolean get() = formulario?.esRellenable == true
@@ -99,6 +104,20 @@ class CasosDelVisor(
     val listarCampos: ListarCampos,
     val rellenar: RellenarCampo,
     val guardar: GuardarDocumento,
+    val estamparFirma: EstamparFirma,
+)
+
+/**
+ * Una firma que se está colocando, antes de estamparla.
+ *
+ * Vive aquí y no en el documento a propósito: mientras se arrastra no se ha tocado
+ * nada, y cancelar tiene que dejar el PDF exactamente como estaba. El marco va en
+ * puntos de página, que es el sistema en el que se estampará.
+ */
+data class ColocacionFirma(
+    val firma: Firma,
+    val pagina: Int,
+    val marco: RectPt,
 )
 
 /** Hacia dónde se mueve el foco entre campos. */
@@ -625,6 +644,108 @@ class VisorViewModel(
         }
     }
 
+    /**
+     * Empieza a colocar una firma sobre la página que se está viendo.
+     *
+     * Nace centrada y ocupando un tercio del ancho, que es un tamaño de firma
+     * razonable en un A4; a partir de ahí manda el dedo. La proporción es la del PNG
+     * y no se toca nunca al redimensionar, o la letra saldría estirada.
+     */
+    fun empezarAColocar(firma: Firma) {
+        val estado = _estado.value
+        if (estado.id == null) return
+        val tamano = tamanoDe(estado.paginaActual) ?: return
+
+        val ancho = tamano.ancho * FRACCION_INICIAL_DE_ANCHO
+        val alto = ancho * firma.proporcion
+        val x = (tamano.ancho - ancho) / 2f
+        val y = (tamano.alto - alto) / 2f
+
+        _estado.value =
+            estado.copy(
+                modo = ModoVisor.ColocarFirma,
+                chromeVisible = true,
+                campoActivo = null,
+                colocacion =
+                    ColocacionFirma(
+                        firma = firma,
+                        pagina = estado.paginaActual,
+                        marco = RectPt(x, y, x + ancho, y + alto),
+                    ),
+            )
+    }
+
+    /** Arrastra la firma, sin dejar que se salga de la página. */
+    fun moverColocacion(
+        dxPt: Float,
+        dyPt: Float,
+    ) {
+        val colocacion = _estado.value.colocacion ?: return
+        val tamano = tamanoDe(colocacion.pagina) ?: return
+        val marco = colocacion.marco
+
+        val x = (marco.x0 + dxPt).coerceIn(0f, tamano.ancho - marco.ancho)
+        val y = (marco.y0 + dyPt).coerceIn(0f, tamano.alto - marco.alto)
+        _estado.value =
+            _estado.value.copy(
+                colocacion = colocacion.copy(marco = RectPt(x, y, x + marco.ancho, y + marco.alto)),
+            )
+    }
+
+    /**
+     * Cambia el tamaño manteniendo la proporción y la esquina de arriba a la
+     * izquierda: se estira desde el asa de abajo a la derecha, como en todas partes.
+     */
+    fun redimensionarColocacion(dAnchoPt: Float) {
+        val colocacion = _estado.value.colocacion ?: return
+        val tamano = tamanoDe(colocacion.pagina) ?: return
+        val marco = colocacion.marco
+
+        val maximo = minOf(tamano.ancho - marco.x0, (tamano.alto - marco.y0) / colocacion.firma.proporcion)
+        val ancho = (marco.ancho + dAnchoPt).coerceIn(ANCHO_MINIMO_PT, maximo)
+        val alto = ancho * colocacion.firma.proporcion
+        _estado.value =
+            _estado.value.copy(
+                colocacion = colocacion.copy(marco = RectPt(marco.x0, marco.y0, marco.x0 + ancho, marco.y0 + alto)),
+            )
+    }
+
+    /** Deja el documento como estaba: mientras se colocaba, no se había tocado. */
+    fun cancelarColocacion() {
+        _estado.value = _estado.value.copy(modo = ModoVisor.Lectura, colocacion = null)
+    }
+
+    /** Estampa la firma donde quedó y vuelve a leer la página con ella dentro. */
+    fun confirmarColocacion() {
+        val estado = _estado.value
+        val id = estado.id ?: return
+        val colocacion = estado.colocacion ?: return
+
+        viewModelScope.launch {
+            val resultado =
+                runCatching {
+                    withContext(dispatcherRender) {
+                        casos.estamparFirma(id, colocacion.firma.id, colocacion.pagina, colocacion.marco)
+                    }
+                }
+            _estado.value =
+                resultado.fold(
+                    onSuccess = {
+                        cache.olvidar(colocacion.pagina)
+                        _paginas.value = _paginas.value.filterKeys { it.pagina != colocacion.pagina }
+                        _estado.value.copy(
+                            modo = ModoVisor.Lectura,
+                            colocacion = null,
+                            cambiosSinGuardar = true,
+                            error = null,
+                        )
+                    },
+                    onFailure = { fallo -> _estado.value.copy(error = mensajeDe(fallo)) },
+                )
+            if (resultado.isSuccess) pedir(id, colocacion.pagina, _estado.value.zoom)
+        }
+    }
+
     fun descartarError() {
         _estado.value = _estado.value.copy(error = null)
     }
@@ -679,6 +800,12 @@ class VisorViewModel(
     }
 
     companion object {
+        /** Lo que ocupa de ancho una firma recién colocada. */
+        const val FRACCION_INICIAL_DE_ANCHO = 0.33f
+
+        /** Por debajo de esto la firma no se ve, y el asa no se puede coger. */
+        const val ANCHO_MINIMO_PT = 40f
+
         /** Páginas que se rasterizan a cada lado de lo visible. */
         const val PRECARGA = 1
 

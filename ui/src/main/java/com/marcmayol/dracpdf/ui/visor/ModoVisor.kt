@@ -21,4 +21,10 @@ sealed interface ModoVisor {
 
     /** Rellenar el formulario del documento. */
     data object Formulario : ModoVisor
+
+    /**
+     * Colocar una firma dibujada sobre la página: se arrastra, se ajusta de tamaño y
+     * se confirma. Hasta que se confirma, el documento no se ha tocado.
+     */
+    data object ColocarFirma : ModoVisor
 }

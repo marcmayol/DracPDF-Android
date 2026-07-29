@@ -110,7 +110,9 @@ class InventarioFase1Test {
                 "deshabilitada en la Fase 1",
                 habilitada = false,
             ),
-            Accion(TAG_DESTINO_FIRMAS, "Firmas", "Fase 4", "deshabilitada en la Fase 1", habilitada = false),
+            // Desde la Fase 3 abre la biblioteca de firmas dibujadas; la firma
+            // digital, que es otra cosa, sigue siendo de la Fase 4.
+            Accion(TAG_DESTINO_FIRMAS, "Firmas", "biblioteca de firmas dibujadas", "siempre"),
         )
 
     @Test

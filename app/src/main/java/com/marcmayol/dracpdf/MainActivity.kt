@@ -37,6 +37,7 @@ import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
 import com.marcmayol.dracpdf.dominio.registro.EstadoDocumento
 import com.marcmayol.dracpdf.ui.documentos.DocumentoEnLista
 import com.marcmayol.dracpdf.ui.documentos.HojaDocumentos
+import com.marcmayol.dracpdf.ui.firmas.FirmasViewModel
 import com.marcmayol.dracpdf.ui.inicio.HojaContrasena
 import com.marcmayol.dracpdf.ui.inicio.PantallaInicio
 import com.marcmayol.dracpdf.ui.tema.TemaDracPDF
@@ -105,6 +106,7 @@ private fun AplicacionDracPDFUi(
 
     val appModelo: AppViewModel = viewModel(factory = fabricaDe(grafo))
     val visorModelo: VisorViewModel = viewModel(factory = fabricaDe(grafo))
+    val firmasModelo: FirmasViewModel = viewModel(factory = fabricaDe(grafo))
     val estado by appModelo.estado.collectAsStateWithLifecycle()
     val abiertos by appModelo.abiertos.collectAsStateWithLifecycle()
     val miniaturasDocs by appModelo.miniaturas.collectAsStateWithLifecycle()
@@ -168,6 +170,7 @@ private fun AplicacionDracPDFUi(
                 alSalir = appModelo::volverAlInicio,
                 documentosAbiertos = abiertos.size,
                 alAbrirDocumentos = { documentosAbiertosVisible = true },
+                firmas = firmasModelo,
             )
 
             if (documentosAbiertosVisible) {
@@ -244,6 +247,9 @@ private fun fabricaDe(grafo: Grafo) =
                         grafo.registro,
                         grafo.renderizarPagina,
                     ) as T
+
+                clase.isAssignableFrom(FirmasViewModel::class.java) ->
+                    FirmasViewModel(grafo.almacenFirmas) as T
 
                 clase.isAssignableFrom(VisorViewModel::class.java) ->
                     VisorViewModel(

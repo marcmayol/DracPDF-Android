@@ -1,12 +1,15 @@
 package com.marcmayol.dracpdf
 
 import android.content.Context
+import com.marcmayol.dracpdf.adaptadores.firmas.AlmacenFirmasFichero
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfDocumentRepository
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfFormService
+import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfStampService
 import com.marcmayol.dracpdf.adaptadores.mupdf.SesionesMuPdf
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
 import com.marcmayol.dracpdf.dominio.casos.CerrarDocumento
+import com.marcmayol.dracpdf.dominio.casos.EstamparFirma
 import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
 import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
@@ -14,6 +17,7 @@ import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
 import com.marcmayol.dracpdf.ui.visor.CachePaginas
 import com.marcmayol.dracpdf.ui.visor.CasosDelVisor
+import java.io.File
 
 /**
  * Las dependencias de la aplicación, montadas a mano.
@@ -40,6 +44,10 @@ class Grafo(
 
     val repositorio = MuPdfDocumentRepository(sesiones, fuente)
     val formularios = MuPdfFormService(sesiones)
+    val sellos = MuPdfStampService(sesiones)
+
+    /** Las firmas viven en el almacenamiento privado: son del usuario, no del sistema. */
+    val almacenFirmas = AlmacenFirmasFichero(File(contexto.filesDir, CARPETA_FIRMAS))
 
     val abrirDocumento = AbrirDocumento(repositorio, registro)
     val renderizarPagina = RenderizarPagina(repositorio, registro)
@@ -47,13 +55,19 @@ class Grafo(
     val listarCampos = ListarCampos(formularios, registro)
     val rellenarCampo = RellenarCampo(formularios, registro)
     val guardarDocumento = GuardarDocumento(repositorio, registro)
+    val estamparFirma = EstamparFirma(sellos, almacenFirmas, repositorio, registro)
 
     /** Lo que el visor necesita, ya montado. */
-    val casosDelVisor = CasosDelVisor(renderizarPagina, listarCampos, rellenarCampo, guardarDocumento)
+    val casosDelVisor =
+        CasosDelVisor(renderizarPagina, listarCampos, rellenarCampo, guardarDocumento, estamparFirma)
 
     val cachePaginas = CachePaginas(CachePaginas.presupuestoPara(contexto))
 
     fun alTerminar() {
         repositorio.cerrarTodo()
+    }
+
+    private companion object {
+        const val CARPETA_FIRMAS = "firmas"
     }
 }

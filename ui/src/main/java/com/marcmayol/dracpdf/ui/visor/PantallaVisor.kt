@@ -46,8 +46,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
+import com.marcmayol.dracpdf.dominio.modelo.Firma
 import com.marcmayol.dracpdf.dominio.modelo.TamanoPt
 import com.marcmayol.dracpdf.dominio.modelo.TipoCampo
+import com.marcmayol.dracpdf.ui.firmas.FirmasViewModel
+import com.marcmayol.dracpdf.ui.firmas.HojaDibujarFirma
+import com.marcmayol.dracpdf.ui.firmas.HojaFirmas
 import com.marcmayol.dracpdf.ui.tema.ColoresPapel
 import com.marcmayol.dracpdf.ui.tema.MedidasLadon
 import kotlinx.coroutines.delay
@@ -68,6 +72,7 @@ fun PantallaVisor(
     modifier: Modifier = Modifier,
     documentosAbiertos: Int = 1,
     alAbrirDocumentos: () -> Unit = {},
+    firmas: FirmasViewModel? = null,
 ) {
     val estado by modelo.estado.collectAsState()
     val paginas by modelo.paginas.collectAsState()
@@ -81,6 +86,18 @@ fun PantallaVisor(
     var indiceAbierto by remember { mutableStateOf(false) }
     var saltarA by remember { mutableStateOf<Int?>(null) }
     var opcionesDe by remember { mutableStateOf<CampoFormulario?>(null) }
+    var firmasAbiertas by remember { mutableStateOf(false) }
+    var dibujando by remember { mutableStateOf(false) }
+
+    // La imagen de la firma que se está colocando sale de la misma caché de
+    // miniaturas de la biblioteca: ya está decodificada y no hace falta otra copia.
+    val miniaturasDeFirmas =
+        firmas
+            ?.miniaturas
+            ?.collectAsState()
+            ?.value
+            .orEmpty()
+    val firmaEnMano = estado.colocacion?.let { miniaturasDeFirmas[it.firma.id.valor] }
     LaunchedEffect(estado.zoom) { zoomVivo = estado.zoom }
     LaunchedEffect(zoomVivo) {
         // Cada cambio cancela esta espera; cuando el gesto para, se fija el zoom y
@@ -134,6 +151,9 @@ fun PantallaVisor(
                 alTocarCampo = { campo -> tocarCampo(modelo, campo) { opcionesDe = campo } },
                 alEscribirCampo = { campo, valor -> modelo.escribirTexto(campo.id, valor) },
                 alIrAlSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
+                firmaEnMano = firmaEnMano,
+                alArrastrarFirma = modelo::moverColocacion,
+                alRedimensionarFirma = modelo::redimensionarColocacion,
                 alTocar = modelo::alternarChrome,
                 alDobleTocar = {
                     modelo.fijarZoom(if (estado.zoom > AJUSTE_ANCHO) AJUSTE_ANCHO else CIEN_POR_CIEN)
@@ -160,6 +180,12 @@ fun PantallaVisor(
                 alGuardar = modelo::guardar,
                 alCampoAnterior = { modelo.irACampo(Direccion.ANTERIOR) },
                 alCampoSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
+                alConfirmarColocacion = modelo::confirmarColocacion,
+                alCancelarColocacion = modelo::cancelarColocacion,
+                alAbrirFirmas = {
+                    firmas?.cargar()
+                    firmasAbiertas = true
+                },
                 hayCampoAnterior = estado.hayCampoAnterior,
                 hayCampoSiguiente = estado.hayCampoSiguiente,
                 campos = estado.formulario?.campos ?: 0,
@@ -173,6 +199,23 @@ fun PantallaVisor(
     estado.error?.let { error ->
         BandaError(mensaje = error, alDescartar = modelo::descartarError)
     }
+
+    HojasDeFirmas(
+        firmas = firmas,
+        biblioteca = firmasAbiertas,
+        dibujando = dibujando,
+        alCerrarBiblioteca = { firmasAbiertas = false },
+        alCerrarDibujo = { dibujando = false },
+        alDibujarNueva = {
+            firmasAbiertas = false
+            dibujando = true
+        },
+        alColocar = { firma ->
+            firmasAbiertas = false
+            dibujando = false
+            modelo.empezarAColocar(firma)
+        },
+    )
 
     opcionesDe?.let { campo ->
         HojaOpciones(
@@ -279,6 +322,9 @@ private fun ListaDePaginas(
     alTocarCampo: (CampoFormulario) -> Unit,
     alEscribirCampo: (CampoFormulario, String) -> Unit,
     alIrAlSiguiente: () -> Unit,
+    firmaEnMano: ImageBitmap?,
+    alArrastrarFirma: (Float, Float) -> Unit,
+    alRedimensionarFirma: (Float) -> Unit,
     alTocar: () -> Unit,
     alDobleTocar: () -> Unit,
     alPellizcar: (Float) -> Unit,
@@ -323,6 +369,19 @@ private fun ListaDePaginas(
                         // páginas que están a la vista: es el mismo trato perezoso que
                         // reciben los píxeles, y no hay nada que guardar al soltarlo
                         // porque los valores viven en el documento.
+                        val colocacion = estado.colocacion?.takeIf { it.pagina == indice }
+                        if (colocacion != null && firmaEnMano != null && tamano != null) {
+                            OverlayColocacion(
+                                firma = firmaEnMano,
+                                colocacion = colocacion,
+                                tamano = tamano,
+                                ancho = anchoPagina,
+                                alto = anchoPagina * proporcion,
+                                alArrastrar = alArrastrarFirma,
+                                alRedimensionar = alRedimensionarFirma,
+                            )
+                        }
+
                         val delaPagina = campos[indice]
                         if (estado.modo == ModoVisor.Formulario && tamano != null && !delaPagina.isNullOrEmpty()) {
                             OverlayCampos(
@@ -413,6 +472,50 @@ private fun PildoraPagina(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
+        )
+    }
+}
+
+/**
+ * Las dos hojas de firmas: la biblioteca y el lienzo.
+ *
+ * Se saca aquí para que la pantalla del visor siga cabiendo en la cabeza de quien la
+ * lee; el visor ya tiene bastante con los modos.
+ */
+@Composable
+private fun HojasDeFirmas(
+    firmas: FirmasViewModel?,
+    biblioteca: Boolean,
+    dibujando: Boolean,
+    alCerrarBiblioteca: () -> Unit,
+    alCerrarDibujo: () -> Unit,
+    alDibujarNueva: () -> Unit,
+    alColocar: (Firma) -> Unit,
+) {
+    if (firmas == null) return
+
+    if (biblioteca) {
+        val guardadas by firmas.firmas.collectAsState()
+        val miniaturas by firmas.miniaturas.collectAsState()
+        HojaFirmas(
+            firmas = guardadas,
+            miniaturas = miniaturas,
+            alElegir = alColocar,
+            alBorrar = firmas::borrar,
+            alDibujarNueva = alDibujarNueva,
+            alCerrar = alCerrarBiblioteca,
+        )
+    }
+
+    if (dibujando) {
+        HojaDibujarFirma(
+            alGuardar = { dibujada ->
+                alCerrarDibujo()
+                // Recién dibujada, lo que se quiere es usarla: se guarda y se pasa
+                // directamente a colocarla, sin volver a la lista a buscarla.
+                firmas.guardar(dibujada, alGuardar = alColocar)
+            },
+            alCerrar = alCerrarDibujo,
         )
     }
 }

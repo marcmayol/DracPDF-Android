@@ -127,6 +127,9 @@ fun BarraDelModo(
     alGuardar: () -> Unit,
     alCampoAnterior: () -> Unit,
     alCampoSiguiente: () -> Unit,
+    alConfirmarColocacion: () -> Unit,
+    alCancelarColocacion: () -> Unit,
+    alAbrirFirmas: () -> Unit,
     campos: Int,
     modifier: Modifier = Modifier,
     formularioDisponible: Boolean = false,
@@ -140,7 +143,15 @@ fun BarraDelModo(
             BarraInferiorVisor(
                 alAbrirIndice = alAbrirIndice,
                 alAbrirFormulario = alEntrarEnFormulario,
+                alAbrirFirmas = alAbrirFirmas,
                 formularioDisponible = formularioDisponible,
+                modifier = modifier,
+            )
+
+        ModoVisor.ColocarFirma ->
+            BarraColocacion(
+                alConfirmar = alConfirmarColocacion,
+                alCancelar = alCancelarColocacion,
                 modifier = modifier,
             )
 
@@ -171,6 +182,7 @@ fun BarraInferiorVisor(
     alAbrirIndice: () -> Unit,
     modifier: Modifier = Modifier,
     alAbrirFormulario: () -> Unit = {},
+    alAbrirFirmas: () -> Unit = {},
     formularioDisponible: Boolean = false,
 ) {
     Row(
@@ -212,10 +224,11 @@ fun BarraInferiorVisor(
             modifier = Modifier.weight(1f),
         )
         DestinoInferior(
-            icono = IconosLadon.firmaCertificado,
+            icono = IconosLadon.firmaDibujada,
             etiqueta = "Firmas",
             tag = TAG_DESTINO_FIRMAS,
-            habilitado = false,
+            habilitado = true,
+            alPulsar = alAbrirFirmas,
             modifier = Modifier.weight(1f),
         )
     }
@@ -312,6 +325,65 @@ fun BarraFormulario(
     }
 }
 
+/**
+ * La barra de colocar una firma: cancelar y confirmar, nada más.
+ *
+ * Los dos controles están **siempre visibles mientras dura el modo**, que es la
+ * lección que el escritorio pagó cara: unos controles de colocación que aparecen y
+ * desaparecen dejan al usuario sin saber si sigue colocando algo o ya lo ha soltado.
+ * Y fuera del modo no existen, porque la barra sale del `when` de arriba.
+ */
+@Composable
+fun BarraColocacion(
+    alConfirmar: () -> Unit,
+    alCancelar: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .navigationBarsPadding()
+                .heightIn(min = MedidasLadon.barraInferior)
+                .padding(horizontal = 12.dp)
+                .testTag(TAG_BARRA_COLOCACION),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Cancelar",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier =
+                Modifier
+                    .heightIn(min = MedidasLadon.areaTactil)
+                    .clickable(onClick = alCancelar)
+                    .padding(horizontal = 12.dp, vertical = 14.dp)
+                    .testTag(TAG_COLOCACION_CANCELAR),
+        )
+        Text(
+            text = "Arrastra la firma y ajústala",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false).padding(horizontal = 8.dp),
+        )
+        Text(
+            text = "Colocar",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier =
+                Modifier
+                    .heightIn(min = MedidasLadon.areaTactil)
+                    .clickable(onClick = alConfirmar)
+                    .padding(horizontal = 12.dp, vertical = 14.dp)
+                    .testTag(TAG_COLOCACION_CONFIRMAR),
+        )
+    }
+}
+
 @Composable
 private fun DestinoInferior(
     icono: Int,
@@ -371,3 +443,7 @@ const val TAG_FORM_ANTERIOR = "visor_form_anterior"
 const val TAG_FORM_SIGUIENTE = "visor_form_siguiente"
 const val TAG_FORM_HECHO = "visor_form_hecho"
 const val TAG_FORM_GUARDAR = "visor_form_guardar"
+
+const val TAG_BARRA_COLOCACION = "visor_barra_colocacion"
+const val TAG_COLOCACION_CANCELAR = "visor_colocacion_cancelar"
+const val TAG_COLOCACION_CONFIRMAR = "visor_colocacion_confirmar"
