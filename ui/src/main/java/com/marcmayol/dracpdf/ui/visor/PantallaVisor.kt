@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -43,6 +44,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
 import com.marcmayol.dracpdf.dominio.modelo.TamanoPt
 import com.marcmayol.dracpdf.ui.tema.ColoresPapel
 import com.marcmayol.dracpdf.ui.tema.MedidasLadon
@@ -67,6 +69,7 @@ fun PantallaVisor(
 ) {
     val estado by modelo.estado.collectAsState()
     val paginas by modelo.paginas.collectAsState()
+    val campos by modelo.campos.collectAsState()
     val lista = rememberLazyListState()
 
     // El zoom del gesto va aparte del zoom fijado: durante el pellizco sólo se estira
@@ -96,7 +99,11 @@ fun PantallaVisor(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .background(MaterialTheme.colorScheme.background)
+                // El teclado del formulario levanta la barra del modo en vez de
+                // taparla. Es la queja número uno de rellenar formularios en el móvil,
+                // y se resuelve aquí, una vez, y no campo a campo.
+                .imePadding(),
     ) {
         AnimatedVisibility(visible = estado.chromeVisible, enter = fadeIn(), exit = fadeOut()) {
             BarraSuperiorVisor(
@@ -107,13 +114,19 @@ fun PantallaVisor(
             )
         }
 
+        estado.aviso?.let { aviso ->
+            BandaAvisoFormulario(aviso = aviso, alDescartar = modelo::descartarAviso)
+        }
+
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             ListaDePaginas(
                 estado = estado,
                 paginas = paginas,
+                campos = campos,
                 lista = lista,
                 zoomVivo = zoomVivo,
                 tamanoDe = modelo::tamanoDe,
+                alTocarCampo = { campo -> modelo.activarCampo(campo.id) },
                 alTocar = modelo::alternarChrome,
                 alDobleTocar = {
                     modelo.fijarZoom(if (estado.zoom > AJUSTE_ANCHO) AJUSTE_ANCHO else CIEN_POR_CIEN)
@@ -132,7 +145,14 @@ fun PantallaVisor(
         }
 
         AnimatedVisibility(visible = estado.chromeVisible, enter = fadeIn(), exit = fadeOut()) {
-            BarraInferiorVisor(alAbrirIndice = { indiceAbierto = true })
+            BarraDelModo(
+                modo = estado.modo,
+                alAbrirIndice = { indiceAbierto = true },
+                alEntrarEnFormulario = modelo::entrarEnFormulario,
+                alSalirDelFormulario = modelo::salirDelFormulario,
+                campos = estado.formulario?.campos ?: 0,
+                formularioDisponible = estado.hayFormulario,
+            )
         }
     }
 
@@ -164,9 +184,11 @@ fun PantallaVisor(
 private fun ListaDePaginas(
     estado: EstadoVisor,
     paginas: Map<ClavePagina, ImageBitmap>,
+    campos: Map<Int, List<CampoFormulario>>,
     lista: LazyListState,
     zoomVivo: Float,
     tamanoDe: (Int) -> TamanoPt?,
+    alTocarCampo: (CampoFormulario) -> Unit,
     alTocar: () -> Unit,
     alDobleTocar: () -> Unit,
     alPellizcar: (Float) -> Unit,
@@ -206,7 +228,23 @@ private fun ListaDePaginas(
                         mapa = mejorDisponible(paginas, indice, zoomVivo),
                         ancho = anchoPagina,
                         alto = anchoPagina * proporcion,
-                    )
+                    ) {
+                        // El overlay sólo existe dentro del modo y sólo para las
+                        // páginas que están a la vista: es el mismo trato perezoso que
+                        // reciben los píxeles, y no hay nada que guardar al soltarlo
+                        // porque los valores viven en el documento.
+                        val delaPagina = campos[indice]
+                        if (estado.modo == ModoVisor.Formulario && tamano != null && !delaPagina.isNullOrEmpty()) {
+                            OverlayCampos(
+                                campos = delaPagina,
+                                tamano = tamano,
+                                ancho = anchoPagina,
+                                alto = anchoPagina * proporcion,
+                                campoActivo = estado.campoActivo,
+                                alTocarCampo = alTocarCampo,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -239,6 +277,7 @@ private fun PaginaDelDocumento(
     mapa: ImageBitmap?,
     ancho: Dp,
     alto: Dp,
+    encima: @Composable () -> Unit = {},
 ) {
     Box(
         modifier =
@@ -257,6 +296,7 @@ private fun PaginaDelDocumento(
                 contentScale = ContentScale.FillBounds,
             )
         }
+        encima()
     }
 }
 

@@ -3,9 +3,14 @@ package com.marcmayol.dracpdf.ui.visor
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.marcmayol.dracpdf.dominio.casos.ListarCampos
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
+import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
+import com.marcmayol.dracpdf.dominio.modelo.Formulario
+import com.marcmayol.dracpdf.dominio.modelo.IdCampo
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
 import com.marcmayol.dracpdf.dominio.modelo.TamanoPt
+import com.marcmayol.dracpdf.dominio.modelo.TipoFormulario
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +31,39 @@ data class EstadoVisor(
     val zoom: Float = 1f,
     val chromeVisible: Boolean = true,
     val tamanoEstimado: TamanoPt? = null,
-)
+    val modo: ModoVisor = ModoVisor.Lectura,
+    /** El formulario del documento; `null` mientras no se ha averiguado. */
+    val formulario: Formulario? = null,
+    val campoActivo: IdCampo? = null,
+    /** El aviso pendiente sobre el formulario, si hay alguno que dar. */
+    val aviso: AvisoFormulario? = null,
+) {
+    /** Si hay formulario que rellenar, que es lo que habilita el modo. */
+    val hayFormulario: Boolean get() = formulario?.esRellenable == true
+}
+
+/**
+ * Lo que hay que advertir sobre el formulario de este documento, si hay algo.
+ *
+ * Los dos avisos existen porque XFA no es una cosa sola. Uno cierra la puerta y el
+ * otro sólo la entorna, y confundirlos deja al usuario o rellenando lo que no se
+ * guardará, o sin rellenar lo que sí podía.
+ */
+enum class AvisoFormulario {
+    /**
+     * XFA puro: no hay AcroForm debajo, así que aquí no se rellena. Se dice y se
+     * deja leer el documento, que es lo único que se puede ofrecer de verdad.
+     */
+    NO_SE_PUEDE_RELLENAR,
+
+    /**
+     * XFA híbrido: se rellena la capa AcroForm, que es la que entienden todos los
+     * visores. El matiz que hay que dar es que Adobe puede dibujar la capa XFA por
+     * encima y enseñar los valores viejos justo ahí. No es un fallo del relleno; es
+     * que ese PDF lleva dos verdades dentro desde que lo emitieron.
+     */
+    PUEDE_VERSE_DISTINTO_EN_ADOBE,
+}
 
 /**
  * El visor.
@@ -38,6 +75,7 @@ data class EstadoVisor(
  */
 class VisorViewModel(
     private val renderizar: RenderizarPagina,
+    private val listarCampos: ListarCampos,
     private val registro: RegistroDocumentos,
     private val cache: CachePaginas,
     private val cacheMiniaturas: CachePaginas = CachePaginas(PRESUPUESTO_MINIATURAS),
@@ -56,8 +94,21 @@ class VisorViewModel(
     /** Las miniaturas ya dibujadas, por número de página. */
     val miniaturas: StateFlow<Map<Int, ImageBitmap>> = _miniaturas.asStateFlow()
 
+    private val _campos = MutableStateFlow<Map<Int, List<CampoFormulario>>>(emptyMap())
+
+    /**
+     * Los campos de las páginas que están a la vista, por número de página.
+     *
+     * Se cargan y se sueltan con la misma disciplina que los píxeles: el overlay de
+     * una página nace cuando la página entra en la ventana y muere cuando sale. No
+     * hay nada que custodiar al soltarlo, porque el valor de un campo vive en el
+     * documento y no aquí; esto es una vista, no una copia.
+     */
+    val campos: StateFlow<Map<Int, List<CampoFormulario>>> = _campos.asStateFlow()
+
     private val trabajos = ConcurrentHashMap<ClavePagina, Job>()
     private val trabajosMiniatura = ConcurrentHashMap<Int, Job>()
+    private val trabajosCampos = ConcurrentHashMap<Int, Job>()
     private val tamanosReales = ConcurrentHashMap<Int, TamanoPt>()
 
     fun mostrar(id: IdDocumento) {
@@ -70,6 +121,10 @@ class VisorViewModel(
                 paginaActual = estadoDocumento.paginaActual,
                 zoom = estadoDocumento.zoom,
             )
+        viewModelScope.launch {
+            val formulario = withContext(dispatcherRender) { listarCampos.formulario(id) }
+            _estado.value = _estado.value.copy(formulario = formulario, aviso = avisoDe(formulario))
+        }
         viewModelScope.launch {
             // El tamaño de la primera página sirve de estimación para todas: casi
             // ningún documento mezcla formatos, y pedir las 500 al abrir costaría el
@@ -107,10 +162,43 @@ class VisorViewModel(
 
         vivas.forEach { pagina -> pedir(id, pagina, estado.zoom) }
 
+        if (estado.hayFormulario) sincronizarCampos(id, ventana, vivas)
+
         if (primeraVisible in 0 until estado.paginas && primeraVisible != estado.paginaActual) {
             _estado.value = estado.copy(paginaActual = primeraVisible)
             registro.anotarPagina(id, primeraVisible)
         }
+    }
+
+    /**
+     * Trae los campos de las páginas visibles y suelta los de las que se fueron.
+     *
+     * Soltar es la mitad del trabajo: en un formulario de cien páginas, quedarse los
+     * campos de todas las que han pasado por pantalla es acumular sin límite algo que
+     * se vuelve a pedir en un milisegundo.
+     */
+    private fun sincronizarCampos(
+        id: IdDocumento,
+        ventana: IntRange,
+        vivas: List<Int>,
+    ) {
+        trabajosCampos.keys
+            .filter { it !in ventana }
+            .forEach { pagina -> trabajosCampos.remove(pagina)?.cancel() }
+
+        val sobran = _campos.value.keys.filter { it !in ventana }
+        if (sobran.isNotEmpty()) _campos.value = _campos.value - sobran.toSet()
+
+        vivas
+            .filter { it !in _campos.value && !trabajosCampos.containsKey(it) }
+            .forEach { pagina ->
+                trabajosCampos[pagina] =
+                    viewModelScope.launch {
+                        val delaPagina = withContext(dispatcherRender) { listarCampos(id, pagina) }
+                        _campos.value = _campos.value + (pagina to delaPagina)
+                        trabajosCampos.remove(pagina)
+                    }
+            }
     }
 
     private fun pedir(
@@ -196,6 +284,43 @@ class VisorViewModel(
         _estado.value = _estado.value.copy(chromeVisible = !_estado.value.chromeVisible)
     }
 
+    /**
+     * Entra en el modo de formulario, si hay formulario. Un documento sin campos —o
+     * con un XFA que no se puede rellenar— no entra: no habría nada que hacer dentro.
+     */
+    fun entrarEnFormulario() {
+        val estado = _estado.value
+        val id = estado.id ?: return
+        if (!estado.hayFormulario) return
+        _estado.value = estado.copy(modo = ModoVisor.Formulario, chromeVisible = true)
+        // Al entrar hay que tener ya los campos de lo que se está viendo, aunque el
+        // documento se abriera en modo lectura y nadie los hubiera pedido.
+        val ventana = (estado.paginaActual - PRECARGA)..(estado.paginaActual + PRECARGA)
+        sincronizarCampos(id, ventana, ventana.filter { it in 0 until estado.paginas })
+    }
+
+    /** Sale del modo y suelta el campo activo con él: fuera del modo no hay campo. */
+    fun salirDelFormulario() {
+        _estado.value = _estado.value.copy(modo = ModoVisor.Lectura, campoActivo = null)
+    }
+
+    fun activarCampo(id: IdCampo?) {
+        if (_estado.value.modo != ModoVisor.Formulario) return
+        _estado.value = _estado.value.copy(campoActivo = id)
+    }
+
+    /** El usuario ha leído el aviso. No se repite mientras el documento siga abierto. */
+    fun descartarAviso() {
+        _estado.value = _estado.value.copy(aviso = null)
+    }
+
+    private fun avisoDe(formulario: Formulario): AvisoFormulario? =
+        when (formulario.tipo) {
+            TipoFormulario.XFA_PURO -> AvisoFormulario.NO_SE_PUEDE_RELLENAR
+            TipoFormulario.XFA_HIBRIDO -> AvisoFormulario.PUEDE_VERSE_DISTINTO_EN_ADOBE
+            TipoFormulario.ACROFORM, TipoFormulario.NINGUNO -> null
+        }
+
     fun irAPagina(pagina: Int) {
         val estado = _estado.value
         val id = estado.id ?: return
@@ -217,6 +342,8 @@ class VisorViewModel(
         trabajos.clear()
         trabajosMiniatura.values.forEach(Job::cancel)
         trabajosMiniatura.clear()
+        trabajosCampos.values.forEach(Job::cancel)
+        trabajosCampos.clear()
         super.onCleared()
     }
 

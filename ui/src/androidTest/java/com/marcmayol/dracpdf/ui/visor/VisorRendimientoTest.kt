@@ -6,8 +6,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.marcmayol.dracpdf.adaptadores.fixtures.GeneradorFixtures
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfDocumentRepository
+import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfFormService
+import com.marcmayol.dracpdf.adaptadores.mupdf.SesionesMuPdf
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
+import com.marcmayol.dracpdf.dominio.casos.ListarCampos
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
@@ -42,7 +45,8 @@ class VisorRendimientoTest {
                 paginas = PAGINAS,
             )
 
-        val repositorio = MuPdfDocumentRepository(FuenteDocumentosAndroid(contexto.contentResolver))
+        val sesiones = SesionesMuPdf(FuenteDocumentosAndroid(contexto.contentResolver))
+        val repositorio = MuPdfDocumentRepository(sesiones)
         val registro = RegistroDocumentos()
         val abrir = AbrirDocumento(repositorio, registro)
 
@@ -54,7 +58,13 @@ class VisorRendimientoTest {
         assertTrue("El documento tiene ${estado.documento.paginas} páginas", estado.documento.paginas == PAGINAS)
 
         val cache = CachePaginas(CachePaginas.presupuestoPara(contexto))
-        val modelo = VisorViewModel(RenderizarPagina(repositorio, registro), registro, cache)
+        val modelo =
+            VisorViewModel(
+                RenderizarPagina(repositorio, registro),
+                ListarCampos(MuPdfFormService(sesiones), registro),
+                registro,
+                cache,
+            )
 
         val msPrimerRender =
             measureTimeMillis {

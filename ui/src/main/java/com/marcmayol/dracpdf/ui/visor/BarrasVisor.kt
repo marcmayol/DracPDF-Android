@@ -111,15 +111,53 @@ fun BarraSuperiorVisor(
 }
 
 /**
- * Barra inferior, 80 dp, cuatro acciones: Índice · Formulario · Herramientas ·
- * Firmas. Son las cuatro cosas que se abren a mitad de lectura, y el pulgar llega a
- * todas. Es una barra de acciones, no de navegación: no hay secciones entre las que
- * moverse, se abren hojas.
+ * La barra inferior que toca según el modo. **Un modo, una barra**: es este `when`,
+ * y no hay otro sitio donde se decida.
+ *
+ * De aquí sale gratis una garantía que el escritorio tuvo que aprender a base de
+ * bugs: los controles de un modo no pueden verse fuera de él, porque fuera de él ni
+ * siquiera se componen.
+ */
+@Composable
+fun BarraDelModo(
+    modo: ModoVisor,
+    alAbrirIndice: () -> Unit,
+    alEntrarEnFormulario: () -> Unit,
+    alSalirDelFormulario: () -> Unit,
+    campos: Int,
+    modifier: Modifier = Modifier,
+    formularioDisponible: Boolean = false,
+) {
+    when (modo) {
+        ModoVisor.Lectura ->
+            BarraInferiorVisor(
+                alAbrirIndice = alAbrirIndice,
+                alAbrirFormulario = alEntrarEnFormulario,
+                formularioDisponible = formularioDisponible,
+                modifier = modifier,
+            )
+
+        ModoVisor.Formulario ->
+            BarraFormulario(
+                campos = campos,
+                alSalir = alSalirDelFormulario,
+                modifier = modifier,
+            )
+    }
+}
+
+/**
+ * Barra inferior de lectura, 80 dp, cuatro acciones: Índice · Formulario ·
+ * Herramientas · Firmas. Son las cuatro cosas que se abren a mitad de lectura, y el
+ * pulgar llega a todas. Es una barra de acciones, no de navegación: no hay secciones
+ * entre las que moverse, se abren hojas.
  */
 @Composable
 fun BarraInferiorVisor(
     alAbrirIndice: () -> Unit,
     modifier: Modifier = Modifier,
+    alAbrirFormulario: () -> Unit = {},
+    formularioDisponible: Boolean = false,
 ) {
     Row(
         modifier =
@@ -145,7 +183,11 @@ fun BarraInferiorVisor(
             icono = IconosLadon.formulario,
             etiqueta = "Formulario",
             tag = TAG_DESTINO_FORMULARIO,
-            habilitado = false,
+            // Se ve siempre y se pulsa sólo cuando hay algo que rellenar: en un PDF sin
+            // campos, o en un XFA que no se puede rellenar, entrar al modo llevaría a
+            // una pantalla sin nada dentro.
+            habilitado = formularioDisponible,
+            alPulsar = alAbrirFormulario,
             modifier = Modifier.weight(1f),
         )
         DestinoInferior(
@@ -162,6 +204,73 @@ fun BarraInferiorVisor(
             habilitado = false,
             modifier = Modifier.weight(1f),
         )
+    }
+}
+
+/**
+ * La barra del modo de formulario: cuántos campos hay, ir al anterior y al
+ * siguiente, y salir.
+ *
+ * Existe **sólo** dentro del modo, y de ahí que «Hecho» no pueda aparecer donde no
+ * hay nada que dar por hecho. La navegación entre campos llega con el foco, en la
+ * tarea 4 de esta fase; hasta entonces se ve y no se pulsa, como el resto de lo que
+ * aún no está.
+ */
+@Composable
+fun BarraFormulario(
+    campos: Int,
+    alSalir: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .navigationBarsPadding()
+                .heightIn(min = MedidasLadon.barraInferior)
+                .padding(horizontal = 6.dp)
+                .testTag(TAG_BARRA_FORMULARIO),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (campos == 1) "1 campo" else "$campos campos",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 8.dp).testTag(TAG_FORM_CONTADOR),
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BotonIconoLadon(
+                icono = IconosLadon.paginaAnterior,
+                descripcion = "Campo anterior",
+                alPulsar = {},
+                habilitado = false,
+                modifier = Modifier.testTag(TAG_FORM_ANTERIOR),
+            )
+            BotonIconoLadon(
+                icono = IconosLadon.paginaSiguiente,
+                descripcion = "Campo siguiente",
+                alPulsar = {},
+                habilitado = false,
+                modifier = Modifier.testTag(TAG_FORM_SIGUIENTE),
+            )
+            Row(
+                modifier =
+                    Modifier
+                        .heightIn(min = MedidasLadon.areaTactil)
+                        .clickable(onClick = alSalir)
+                        .padding(horizontal = 12.dp)
+                        .testTag(TAG_FORM_HECHO),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Hecho",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
     }
 }
 
@@ -217,3 +326,9 @@ const val TAG_DESTINO_FORMULARIO = "visor_destino_formulario"
 const val TAG_DESTINO_HERRAMIENTAS = "visor_destino_herramientas"
 const val TAG_DESTINO_FIRMAS = "visor_destino_firmas"
 const val TAG_CHEVRON_DOCUMENTOS = "visor_chevron_documentos"
+
+const val TAG_BARRA_FORMULARIO = "visor_barra_formulario"
+const val TAG_FORM_CONTADOR = "visor_form_contador"
+const val TAG_FORM_ANTERIOR = "visor_form_anterior"
+const val TAG_FORM_SIGUIENTE = "visor_form_siguiente"
+const val TAG_FORM_HECHO = "visor_form_hecho"

@@ -246,7 +246,12 @@ private fun fabricaDe(grafo: Grafo) =
                     ) as T
 
                 clase.isAssignableFrom(VisorViewModel::class.java) ->
-                    VisorViewModel(grafo.renderizarPagina, grafo.registro, grafo.cachePaginas) as T
+                    VisorViewModel(
+                        grafo.renderizarPagina,
+                        grafo.listarCampos,
+                        grafo.registro,
+                        grafo.cachePaginas,
+                    ) as T
 
                 else -> error("No sé construir ${clase.name}")
             }

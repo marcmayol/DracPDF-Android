@@ -8,8 +8,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.marcmayol.dracpdf.adaptadores.fixtures.GeneradorFixtures
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfDocumentRepository
+import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfFormService
+import com.marcmayol.dracpdf.adaptadores.mupdf.SesionesMuPdf
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
+import com.marcmayol.dracpdf.dominio.casos.ListarCampos
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
@@ -36,7 +39,8 @@ class MiniaturasTest {
     fun la_hoja_de_miniaturas_se_abre_y_solo_dibuja_las_que_se_ven() {
         val fichero =
             GeneradorFixtures.documento(File(contexto.cacheDir, "miniaturas.pdf"), paginas = PAGINAS)
-        val repositorio = MuPdfDocumentRepository(FuenteDocumentosAndroid(contexto.contentResolver))
+        val sesiones = SesionesMuPdf(FuenteDocumentosAndroid(contexto.contentResolver))
+        val repositorio = MuPdfDocumentRepository(sesiones)
         val registro = RegistroDocumentos()
         AbrirDocumento(repositorio, registro)(OrigenDocumento.Privado(fichero.absolutePath, "miniaturas.pdf"))
         val estado = registro.abiertos().first()
@@ -44,6 +48,7 @@ class MiniaturasTest {
         val modelo =
             VisorViewModel(
                 RenderizarPagina(repositorio, registro),
+                ListarCampos(MuPdfFormService(sesiones), registro),
                 registro,
                 CachePaginas(CachePaginas.presupuestoPara(contexto)),
             )

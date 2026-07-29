@@ -214,8 +214,12 @@ class InventarioFase1Test {
         grafo.abrirDocumento(OrigenDocumento.Privado(fichero.absolutePath, nombre))
         val estado = grafo.registro.abiertos().first()
 
-        return VisorViewModel(grafo.renderizarPagina, grafo.registro, CachePaginas(PRESUPUESTO_PRUEBA))
-            .also { it.mostrar(estado.id) }
+        return VisorViewModel(
+            grafo.renderizarPagina,
+            grafo.listarCampos,
+            grafo.registro,
+            CachePaginas(PRESUPUESTO_PRUEBA),
+        ).also { it.mostrar(estado.id) }
     }
 
     private companion object {
