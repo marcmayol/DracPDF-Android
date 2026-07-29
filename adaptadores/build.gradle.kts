@@ -20,6 +20,14 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    sourceSets {
+        // Los formularios oficiales que baja scripts/descargar_formularios_oficiales.py
+        // viajan al dispositivo como assets del APK de test. La carpeta no está
+        // versionada y puede no existir: si falta, el APK se monta igual y los tests
+        // que la necesitan se saltan solos diciendo cómo conseguirla.
+        getByName("androidTest").assets.srcDir(rootProject.file("fixtures-externos"))
+    }
 }
 
 dependencies {

@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -130,15 +131,9 @@ fun PantallaVisor(
                 tamanoDe = modelo::tamanoDe,
                 // Cada tipo de campo se toca de una manera: una casilla cambia sola,
                 // una elección abre su lista, y un texto se pone a esperar teclas.
-                alTocarCampo = { campo ->
-                    modelo.activarCampo(campo.id)
-                    when (campo.tipo) {
-                        TipoCampo.CASILLA, TipoCampo.RADIO -> modelo.alternarCampo(campo.id)
-                        TipoCampo.COMBO, TipoCampo.LISTA -> opcionesDe = campo
-                        else -> Unit
-                    }
-                },
+                alTocarCampo = { campo -> tocarCampo(modelo, campo) { opcionesDe = campo } },
                 alEscribirCampo = { campo, valor -> modelo.escribirTexto(campo.id, valor) },
+                alIrAlSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
                 alTocar = modelo::alternarChrome,
                 alDobleTocar = {
                     modelo.fijarZoom(if (estado.zoom > AJUSTE_ANCHO) AJUSTE_ANCHO else CIEN_POR_CIEN)
@@ -163,6 +158,10 @@ fun PantallaVisor(
                 alEntrarEnFormulario = modelo::entrarEnFormulario,
                 alSalirDelFormulario = modelo::salirDelFormulario,
                 alGuardar = modelo::guardar,
+                alCampoAnterior = { modelo.irACampo(Direccion.ANTERIOR) },
+                alCampoSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
+                hayCampoAnterior = estado.hayCampoAnterior,
+                hayCampoSiguiente = estado.hayCampoSiguiente,
                 campos = estado.formulario?.campos ?: 0,
                 formularioDisponible = estado.hayFormulario,
                 cambiosSinGuardar = estado.cambiosSinGuardar,
@@ -208,6 +207,65 @@ fun PantallaVisor(
             saltarA = null
         }
     }
+
+    TraerElCampoALaVista(modelo = modelo, lista = lista, estado = estado, zoom = zoomVivo)
+}
+
+/**
+ * Qué hace un toque en un campo, según de qué campo se trate: una casilla cambia
+ * sola, una elección abre su lista, y un texto se queda esperando teclas.
+ */
+private fun tocarCampo(
+    modelo: VisorViewModel,
+    campo: CampoFormulario,
+    alPedirOpciones: () -> Unit,
+) {
+    modelo.activarCampo(campo.id)
+    when (campo.tipo) {
+        TipoCampo.CASILLA, TipoCampo.RADIO -> modelo.alternarCampo(campo.id)
+        TipoCampo.COMBO, TipoCampo.LISTA -> alPedirOpciones()
+        else -> Unit
+    }
+}
+
+/**
+ * Trae el campo enfocado a la vista.
+ *
+ * Se deja por encima de la mitad de la pantalla a propósito: ahí es donde no lo tapa
+ * el teclado al abrirse, que es el fallo más repetido de los formularios en el móvil.
+ */
+@Composable
+private fun TraerElCampoALaVista(
+    modelo: VisorViewModel,
+    lista: LazyListState,
+    estado: EstadoVisor,
+    zoom: Float,
+) {
+    val desplazar by modelo.desplazarA.collectAsState()
+    val altoPantalla = LocalConfiguration.current.screenHeightDp
+
+    LaunchedEffect(desplazar) {
+        desplazar?.let { destino ->
+            val altoPagina = altoDePaginaDe(altoPantalla, estado, zoom)
+            val dentroDeLaPagina = destino.fraccionY * altoPagina
+            lista.scrollToItem(destino.pagina, (dentroDeLaPagina - altoPagina * MARGEN_SOBRE_EL_TECLADO).toInt())
+            modelo.desplazamientoAtendido()
+        }
+    }
+}
+
+/**
+ * Cuánto mide de alto la página en píxeles, para saber dónde cae un campo dentro de
+ * ella. Es una estimación: basta para dejar el campo a la vista, y quien afina el
+ * resto es el propio scroll.
+ */
+private fun altoDePaginaDe(
+    altoPantallaDp: Int,
+    estado: EstadoVisor,
+    zoom: Float,
+): Float {
+    val proporcion = estado.tamanoEstimado?.let { it.alto / it.ancho } ?: PROPORCION_A4
+    return altoPantallaDp * proporcion * zoom
 }
 
 @Composable
@@ -220,6 +278,7 @@ private fun ListaDePaginas(
     tamanoDe: (Int) -> TamanoPt?,
     alTocarCampo: (CampoFormulario) -> Unit,
     alEscribirCampo: (CampoFormulario, String) -> Unit,
+    alIrAlSiguiente: () -> Unit,
     alTocar: () -> Unit,
     alDobleTocar: () -> Unit,
     alPellizcar: (Float) -> Unit,
@@ -274,6 +333,8 @@ private fun ListaDePaginas(
                                 campoActivo = estado.campoActivo,
                                 alTocarCampo = alTocarCampo,
                                 alEscribir = alEscribirCampo,
+                                hayCampoSiguiente = estado.hayCampoSiguiente,
+                                alIrAlSiguiente = alIrAlSiguiente,
                             )
                         }
                     }
@@ -364,6 +425,9 @@ private const val AJUSTE_ANCHO = 1f
 private const val CIEN_POR_CIEN = 2f
 
 private const val ESPERA_TRAS_EL_GESTO_MS = 180L
+
+/** Lo que se deja de página por encima del campo enfocado: un tercio de la altura. */
+private const val MARGEN_SOBRE_EL_TECLADO = 0.33f
 
 const val TAG_LISTA = "visor_lista"
 const val TAG_PILDORA = "visor_pildora_pagina"

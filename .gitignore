@@ -19,5 +19,9 @@ keystore.properties
 # Fixtures: se generan por script, no se versionan
 /fixtures/
 
+# Formularios oficiales de terceros: se bajan con
+# scripts/descargar_formularios_oficiales.py y tampoco se versionan
+/fixtures-externos/
+
 # Registros del compilador de Kotlin
 .kotlin/

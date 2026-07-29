@@ -40,7 +40,7 @@ class MuPdfFormService(
                     acroForm -> TipoFormulario.ACROFORM
                     else -> TipoFormulario.NINGUNO
                 }
-            Formulario(tipo = tipo, campos = if (acroForm) contarCampos(pdf) else 0)
+            Formulario(tipo = tipo, campos = if (acroForm) conObjetos { contarCampos(pdf, it) } else 0)
         }
 
     override fun camposDePagina(
@@ -50,11 +50,53 @@ class MuPdfFormService(
         sesiones.en(id) { documento ->
             val hoja = documento.loadPage(pagina) as? PDFPage ?: return@en emptyList()
             try {
-                hoja.widgets.orEmpty().mapIndexed { indice, widget -> campoDe(widget, pagina, indice) }
+                conObjetos { objetos ->
+                    val leidos =
+                        hoja.widgets.orEmpty().mapIndexed { indice, widget ->
+                            objetos.anotarAnotacion(widget)
+                            campoDe(widget, pagina, indice, objetos)
+                        }
+                    enOrdenDeTabulacion(hoja, leidos, objetos)
+                }
             } finally {
                 hoja.destroy()
             }
         }
+
+    /**
+     * Los campos en el orden en que el documento quiere que se recorran.
+     *
+     * Por omisión, el orden de tabulación de un PDF es el del array `/Annots` de la
+     * página, que es en el que MuPDF los entrega: no hay nada que hacer. Pero una
+     * página puede pedir otro con `/Tabs`, y entonces manda el papel y no el fichero:
+     * `/R` recorre por filas y `/C` por columnas, que es lo que espera quien mira el
+     * impreso y no el PDF.
+     *
+     * `/Tabs /S` pide el orden del árbol de estructura del documento —el mismo que
+     * usan los lectores de pantalla—, y eso hay que ir a buscarlo al `/StructTreeRoot`.
+     * Aquí se deja en el orden de `/Annots`, que es la aproximación que usan los
+     * visores que no implementan la estructura y que en los impresos bien hechos
+     * coincide, porque quien los generó escribió las anotaciones en ese mismo orden.
+     * Se decide así a sabiendas, no por olvido.
+     */
+    private fun enOrdenDeTabulacion(
+        hoja: PDFPage,
+        campos: List<CampoFormulario>,
+        objetos: ObjetosMuPdf,
+    ): List<CampoFormulario> =
+        when (objetos.clave(objetos.anotar(hoja.getObject()), "Tabs")?.asName()) {
+            "R" -> campos.sortedWith(compareBy({ banda(it.marco.y0) }, { it.marco.x0 }))
+            "C" -> campos.sortedWith(compareBy({ banda(it.marco.x0) }, { it.marco.y0 }))
+            else -> campos
+        }
+
+    /**
+     * A qué fila (o columna) pertenece una coordenada.
+     *
+     * Sin agrupar en bandas, dos campos de la misma línea con medio punto de
+     * diferencia se leerían como dos filas y el recorrido saltaría de una a otra.
+     */
+    private fun banda(coordenada: Float): Int = (coordenada / ALTURA_DE_BANDA_PT).toInt()
 
     override fun escribirTexto(
         id: IdDocumento,
@@ -91,18 +133,21 @@ class MuPdfFormService(
                 documento.loadPage(campo.pagina) as? PDFPage
                     ?: throw IllegalArgumentException("La página ${campo.pagina} no admite formularios")
             try {
-                val widgets = hoja.widgets.orEmpty()
-                val widget =
-                    widgets.getOrNull(campo.indice)
-                        ?: throw IllegalArgumentException("El campo $campo ya no está en el documento")
+                conObjetos { objetos ->
+                    val widgets = hoja.widgets.orEmpty()
+                    widgets.forEach(objetos::anotarAnotacion)
+                    val widget =
+                        widgets.getOrNull(campo.indice)
+                            ?: throw IllegalArgumentException("El campo $campo ya no está en el documento")
 
-                cambio(widget)
-                // Regenera la apariencia del campo: sin esto el valor está en el PDF
-                // pero la página se sigue dibujando con lo de antes, y el usuario cree
-                // que no se ha guardado nada.
-                widget.update()
+                    cambio(widget)
+                    // Regenera la apariencia del campo: sin esto el valor está en el PDF
+                    // pero la página se sigue dibujando con lo de antes, y el usuario cree
+                    // que no se ha guardado nada.
+                    widget.update()
 
-                campoDe(widget, campo.pagina, campo.indice)
+                    campoDe(widget, campo.pagina, campo.indice, objetos)
+                }
             } finally {
                 hoja.destroy()
             }
@@ -117,42 +162,60 @@ class MuPdfFormService(
      * grupo de radio, sin ir más lejos—, y contarlos diría que un formulario de tres
      * campos tiene doce.
      */
-    private fun contarCampos(pdf: PDFDocument): Int {
-        val acroForm = pdf.trailer.get("Root")?.get("AcroForm") ?: return 0
-        val raiz = acroForm.get("Fields") ?: return 0
-        return contarEn(raiz, profundidad = 0)
+    private fun contarCampos(
+        pdf: PDFDocument,
+        objetos: ObjetosMuPdf,
+    ): Int {
+        val raiz = objetos.clave(objetos.clave(objetos.anotar(pdf.trailer), "Root"), "AcroForm")
+        val campos = objetos.clave(raiz, "Fields")
+        if (campos == null || campos.isNull) return 0
+        val nodos = (0 until campos.size()).mapNotNull { objetos.anotar(campos.get(it)?.resolve()) }
+        return contarEn(nodos, profundidad = 0, objetos = objetos)
     }
 
     private fun contarEn(
-        nodos: PDFObject,
+        nodos: List<PDFObject>,
         profundidad: Int,
+        objetos: ObjetosMuPdf,
     ): Int {
         if (profundidad > PROFUNDIDAD_MAXIMA) return 0
-        var total = 0
-        for (indice in 0 until nodos.size()) {
-            val nodo = nodos.get(indice)?.resolve() ?: continue
-            val hijos = camposHijos(nodo)
-            total += if (hijos != null) contarEn(hijos, profundidad + 1) else 1
+        return nodos.sumOf { nodo ->
+            val hijos = camposHijos(nodo, objetos)
+            if (hijos.isEmpty()) 1 else contarEn(hijos, profundidad + 1, objetos)
         }
-        return total
     }
 
     /**
-     * Los `/Kids` de un nodo, si son campos de verdad. Un `/Kids` de widgets es la
-     * apariencia del campo padre —los dos botones de un radio— y no campos nuevos.
+     * Los `/Kids` de un nodo que son campos de verdad, o `null` si no hay ninguno.
+     *
+     * Lo que los distingue es **tener nombre propio** (`/T`), y no ser o no ser
+     * widgets. Un campo terminal viene casi siempre fusionado con su widget en un solo
+     * objeto, así que «es widget» no significa «no es campo»: en el W-9 del IRS los
+     * hijos de `Page1[0]` son los veintitrés campos del impreso, todos widgets, y
+     * mirando el `/Subtype` se contaban como uno.
+     *
+     * Los `/Kids` **sin** `/T` sí son apariencias del mismo campo —los dos botones de
+     * un grupo de radio— y no cuentan aparte.
      */
-    private fun camposHijos(nodo: PDFObject): PDFObject? {
-        val hijos = nodo.get("Kids")
-        if (hijos == null || hijos.isNull || hijos.size() == 0) return null
-        val primero = hijos.get(0)?.resolve() ?: return null
-        val esWidget = primero.get("Subtype")?.asName() == "Widget"
-        return if (esWidget) null else hijos
+    private fun camposHijos(
+        nodo: PDFObject,
+        objetos: ObjetosMuPdf,
+    ): List<PDFObject> {
+        val hijos = objetos.clave(nodo, "Kids")
+        if (hijos == null || hijos.isNull || hijos.size() == 0) return emptyList()
+        return (0 until hijos.size())
+            .mapNotNull { objetos.anotar(hijos.get(it)?.resolve()) }
+            .filter { hijo ->
+                val nombre = objetos.clave(hijo, "T")
+                nombre != null && !nombre.isNull
+            }
     }
 
     private fun campoDe(
         widget: PDFWidget,
         pagina: Int,
         indice: Int,
+        objetos: ObjetosMuPdf,
     ): CampoFormulario {
         val nombre = widget.name.orEmpty()
         val etiqueta = widget.label?.takeIf { it.isNotBlank() && it != nombre }
@@ -165,7 +228,7 @@ class MuPdfFormService(
             indice = indice,
             tipo = tipo,
             valor = widget.value.orEmpty(),
-            marcado = tipo.esMarca && estaEncendido(widget),
+            marcado = tipo.esMarca && estaEncendido(widget, objetos),
             // Los límites ya vienen en el sistema de la página, con su rotación
             // aplicada: los mismos ejes en los que se rasteriza, que es lo que permite
             // al overlay poner el campo encima del hueco dibujado y no al lado.
@@ -189,8 +252,11 @@ class MuPdfFormService(
      * valen «Si» y los dos saldrían marcados. `/AS` es de cada widget, y es lo que el
      * propio motor usa para decidir cuál dibuja encendido.
      */
-    private fun estaEncendido(widget: PDFWidget): Boolean {
-        val estado = widget.`object`?.get("AS")?.asName()
+    private fun estaEncendido(
+        widget: PDFWidget,
+        objetos: ObjetosMuPdf,
+    ): Boolean {
+        val estado = objetos.clave(objetos.anotar(widget.`object`), "AS")?.asName()
         return if (estado != null) {
             estado != CampoFormulario.APAGADO
         } else {
@@ -232,5 +298,11 @@ class MuPdfFormService(
          * por delante.
          */
         const val PROFUNDIDAD_MAXIMA = 32
+
+        /**
+         * Lo que se considera «la misma fila» al ordenar por filas o columnas: doce
+         * puntos, algo menos que la altura de una línea de texto normal.
+         */
+        const val ALTURA_DE_BANDA_PT = 12f
     }
 }

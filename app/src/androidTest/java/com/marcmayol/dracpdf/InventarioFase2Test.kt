@@ -25,6 +25,7 @@ import com.marcmayol.dracpdf.ui.visor.TAG_FORM_HECHO
 import com.marcmayol.dracpdf.ui.visor.TAG_FORM_SIGUIENTE
 import com.marcmayol.dracpdf.ui.visor.VisorViewModel
 import com.marcmayol.dracpdf.ui.visor.tagCampo
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -55,11 +56,24 @@ class InventarioFase2Test {
         return visorDe(fichero, nombre)
     }
 
+    /**
+     * Los grafos que ha creado el test. Se cierran al terminar: un documento de MuPDF
+     * que se queda abierto acaba en manos del recolector de basura, que lo destruye
+     * desde su propio hilo y se lleva el proceso por delante.
+     */
+    private val grafos = mutableListOf<Grafo>()
+
+    @After
+    fun cerrarDocumentos() {
+        grafos.forEach { it.alTerminar() }
+        grafos.clear()
+    }
+
     private fun visorDe(
         fichero: File,
         nombre: String,
     ): VisorViewModel {
-        val grafo = Grafo(contexto)
+        val grafo = Grafo(contexto).also(grafos::add)
         grafo.abrirDocumento(OrigenDocumento.Privado(fichero.absolutePath, nombre))
         val estado = grafo.registro.abiertos().first()
         return VisorViewModel(
@@ -165,9 +179,10 @@ class InventarioFase2Test {
         composicion.onNodeWithTag(TAG_FORM_CONTADOR).assertIsDisplayed()
         composicion.onNodeWithTag(TAG_FORM_HECHO).assertIsDisplayed()
         composicion.onNodeWithTag(TAG_FORM_HECHO).assertIsEnabled()
-        // Navegar entre campos llega con el foco, en la tarea 4: se ve y no se pulsa.
+        // Sin campo activo todavía no hay ninguno detrás, pero sí delante: «siguiente»
+        // lleva al primero, que es lo que espera quien acaba de entrar al modo.
         composicion.onNodeWithTag(TAG_FORM_ANTERIOR).assertIsNotEnabled()
-        composicion.onNodeWithTag(TAG_FORM_SIGUIENTE).assertIsNotEnabled()
+        composicion.onNodeWithTag(TAG_FORM_SIGUIENTE).assertIsEnabled()
         // Y el overlay, que es lo que la tarea 2 viene a poner en pantalla.
         composicion.onNodeWithTag(tagCampo(IdCampo(0, 0))).assertIsDisplayed()
     }

@@ -21,6 +21,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -43,6 +44,19 @@ data class EstadoVisor(
     val guardando: Boolean = false,
     /** Lo último que salió mal, para decirlo y no tragárselo. */
     val error: String? = null,
+    /** Las páginas que traen campos, según se van conociendo. */
+    val paginasConCampos: List<Int> = emptyList(),
+    /** Si ya se ha mirado el documento entero: hasta entonces la lista es parcial. */
+    val indiceCompleto: Boolean = false,
+    /**
+     * Si hay campo al que ir hacia atrás o hacia delante.
+     *
+     * Se calculan y no se suponen: un botón encendido que al pulsarlo no hace nada
+     * es peor que uno apagado, porque el usuario cree que el formulario se ha
+     * quedado colgado.
+     */
+    val hayCampoAnterior: Boolean = false,
+    val hayCampoSiguiente: Boolean = false,
     /** El aviso pendiente sobre el formulario, si hay alguno que dar. */
     val aviso: AvisoFormulario? = null,
 ) {
@@ -85,6 +99,25 @@ class CasosDelVisor(
     val listarCampos: ListarCampos,
     val rellenar: RellenarCampo,
     val guardar: GuardarDocumento,
+)
+
+/** Hacia dónde se mueve el foco entre campos. */
+enum class Direccion(
+    val paso: Int,
+) {
+    ANTERIOR(-1),
+    SIGUIENTE(1),
+}
+
+/**
+ * Traer a la vista un campo concreto.
+ *
+ * La posición va como fracción de la altura de la página y no en píxeles: quien
+ * sabe cuántos píxeles mide la página a este zoom es la lista, no el modelo.
+ */
+data class DesplazamientoACampo(
+    val pagina: Int,
+    val fraccionY: Float,
 )
 
 /**
@@ -136,6 +169,12 @@ class VisorViewModel(
     private val trabajos = ConcurrentHashMap<ClavePagina, Job>()
     private val trabajosMiniatura = ConcurrentHashMap<Int, Job>()
     private val trabajosCampos = ConcurrentHashMap<Int, Job>()
+    private var indexado: Job? = null
+
+    private val _desplazarA = MutableStateFlow<DesplazamientoACampo?>(null)
+
+    /** Lo que la lista tiene que traer a la vista, si hay algo pendiente. */
+    val desplazarA: StateFlow<DesplazamientoACampo?> = _desplazarA.asStateFlow()
     private val tamanosReales = ConcurrentHashMap<Int, TamanoPt>()
 
     fun mostrar(id: IdDocumento) {
@@ -149,7 +188,7 @@ class VisorViewModel(
                 zoom = estadoDocumento.zoom,
             )
         viewModelScope.launch {
-            val formulario = withContext(dispatcherRender) { casos.listarCampos.formulario(id) }
+            val formulario = enElMotor { casos.listarCampos.formulario(id) } ?: return@launch
             _estado.value = _estado.value.copy(formulario = formulario, aviso = avisoDe(formulario))
         }
         viewModelScope.launch {
@@ -157,11 +196,34 @@ class VisorViewModel(
             // ningún documento mezcla formatos, y pedir las 500 al abrir costaría el
             // presupuesto entero de los dos segundos. Cada página corrige su hueco en
             // cuanto se conoce su tamaño real.
-            val primera = withContext(dispatcherRender) { casos.renderizar.tamano(id, 0) }
+            val primera = enElMotor { casos.renderizar.tamano(id, 0) } ?: return@launch
             tamanosReales[0] = primera
             _estado.value = _estado.value.copy(tamanoEstimado = primera)
         }
     }
+
+    /**
+     * Hace algo con el motor y devuelve `null` si el documento ya no está.
+     *
+     * Cerrar un documento mientras se está dibujando no es un caso raro: es lo que
+     * pasa cada vez que alguien pulsa «atrás» con páginas encoladas. Los trabajos en
+     * vuelo se encuentran con un documento que ya no existe, y sin esto la excepción
+     * subiría por una corrutina sin nadie que la recoja: se lleva la aplicación por
+     * delante justo al salir, que es cuando peor sienta.
+     *
+     * La excepción no se registra porque no informa de nada: que el documento se haya
+     * cerrado mientras un trabajo estaba en vuelo es lo esperado, y el `null` ya dice
+     * todo lo que hay que saber. Llenar el registro con esto taparía lo que sí importa.
+     */
+    @Suppress("SwallowedException")
+    private suspend fun <T> enElMotor(bloque: () -> T): T? =
+        withContext(dispatcherRender) {
+            try {
+                bloque()
+            } catch (e: ErrorDocumento.NoEstaAbierto) {
+                null
+            }
+        }
 
     /** El tamaño que la lista debe reservar para una página. */
     fun tamanoDe(pagina: Int): TamanoPt? = tamanosReales[pagina] ?: _estado.value.tamanoEstimado
@@ -221,8 +283,9 @@ class VisorViewModel(
             .forEach { pagina ->
                 trabajosCampos[pagina] =
                     viewModelScope.launch {
-                        val delaPagina = withContext(dispatcherRender) { casos.listarCampos(id, pagina) }
+                        val delaPagina = enElMotor { casos.listarCampos(id, pagina) } ?: return@launch
                         _campos.value = _campos.value + (pagina to delaPagina)
+                        _estado.value = conNavegacion(_estado.value)
                         trabajosCampos.remove(pagina)
                     }
             }
@@ -244,11 +307,14 @@ class VisorViewModel(
         val trabajo =
             viewModelScope.launch {
                 val mapa =
-                    withContext(dispatcherRender) {
+                    enElMotor {
                         casos.renderizar(id, pagina, CachePaginas.escalaDe(clave.escalaCuantizada)).let {
                             tamanosReales.putIfAbsent(pagina, casos.renderizar.tamano(id, pagina))
                             it.aImageBitmap()
                         }
+                    } ?: run {
+                        trabajos.remove(clave)
+                        return@launch
                     }
                 cache.guardar(clave, mapa)
                 _paginas.value = _paginas.value + (clave to mapa)
@@ -279,8 +345,9 @@ class VisorViewModel(
             trabajosMiniatura[pagina] =
                 viewModelScope.launch {
                     val mapa =
-                        withContext(dispatcherRender) {
-                            casos.renderizar(id, pagina, ESCALA_MINIATURA).aImageBitmap()
+                        enElMotor { casos.renderizar(id, pagina, ESCALA_MINIATURA).aImageBitmap() } ?: run {
+                            trabajosMiniatura.remove(pagina)
+                            return@launch
                         }
                     cacheMiniaturas.guardar(clave, mapa)
                     publicar(pagina, mapa)
@@ -324,16 +391,155 @@ class VisorViewModel(
         // documento se abriera en modo lectura y nadie los hubiera pedido.
         val ventana = (estado.paginaActual - PRECARGA)..(estado.paginaActual + PRECARGA)
         sincronizarCampos(id, ventana, ventana.filter { it in 0 until estado.paginas })
+        indexarPaginasConCampos(id)
     }
 
     /** Sale del modo y suelta el campo activo con él: fuera del modo no hay campo. */
     fun salirDelFormulario() {
-        _estado.value = _estado.value.copy(modo = ModoVisor.Lectura, campoActivo = null)
+        indexado?.cancel()
+        indexado = null
+        _estado.value =
+            _estado.value.copy(
+                modo = ModoVisor.Lectura,
+                campoActivo = null,
+                paginasConCampos = emptyList(),
+            )
+    }
+
+    /**
+     * Recorre el documento anotando qué páginas traen campos.
+     *
+     * Hace falta para poder decir la verdad con los botones de campo anterior y
+     * siguiente: en el W-9 sólo la primera de sus seis páginas tiene campos, y sin
+     * saberlo el botón «siguiente» quedaría encendido en el último campo para no
+     * hacer nada al pulsarlo.
+     *
+     * Va en segundo plano y es cancelable: mira las páginas sin dibujarlas, que es
+     * barato, pero en un documento largo son muchas y no puede retrasar lo que el
+     * usuario está mirando. Hasta que termina, la navegación funciona con lo que se
+     * sabe hasta ese momento.
+     */
+    private fun indexarPaginasConCampos(id: IdDocumento) {
+        indexado?.cancel()
+        indexado =
+            viewModelScope.launch {
+                val paginas = _estado.value.paginas
+                val conCampos = mutableListOf<Int>()
+                for (pagina in 0 until paginas) {
+                    if (!isActive) return@launch
+                    // El documento puede cerrarse mientras esto recorre —el usuario
+                    // sale, o la aplicación termina—, y entonces no hay nada que
+                    // indexar ni nada que avisar: se deja a medias y ya está.
+                    val tiene = enElMotor { casos.listarCampos(id, pagina).isNotEmpty() } ?: return@launch
+                    if (tiene) {
+                        conCampos += pagina
+                        _estado.value = conNavegacion(_estado.value.copy(paginasConCampos = conCampos.toList()))
+                    }
+                }
+                _estado.value =
+                    conNavegacion(
+                        _estado.value.copy(paginasConCampos = conCampos.toList(), indiceCompleto = true),
+                    )
+            }
+    }
+
+    /**
+     * Va al campo siguiente, o al anterior. Es el mismo recorrido que usa la tecla
+     * «siguiente» del teclado: dos caminos y un solo orden, el que declara el
+     * documento.
+     */
+    fun irACampo(direccion: Direccion) {
+        val estado = _estado.value
+        val id = estado.id ?: return
+        if (estado.modo != ModoVisor.Formulario) return
+
+        viewModelScope.launch {
+            val destino = enElMotor { buscarCampo(id, estado, direccion) } ?: return@launch
+            if (destino.pagina !in _campos.value) {
+                val delaPagina = enElMotor { casos.listarCampos(id, destino.pagina) } ?: return@launch
+                _campos.value = _campos.value + (destino.pagina to delaPagina)
+            }
+            _estado.value =
+                conNavegacion(_estado.value.copy(campoActivo = destino.id, paginaActual = destino.pagina))
+            registro.anotarPagina(id, destino.pagina)
+            // Que el campo esté enfocado y debajo del teclado es el fallo clásico de
+            // los formularios en el móvil: se pide llevarlo a la vista, siempre.
+            _desplazarA.value =
+                DesplazamientoACampo(destino.pagina, destino.marco.y0 / (tamanoDe(destino.pagina)?.alto ?: 1f))
+        }
+    }
+
+    /** El campo al que toca ir, buscando en otras páginas si en ésta se acabaron. */
+    private fun buscarCampo(
+        id: IdDocumento,
+        estado: EstadoVisor,
+        direccion: Direccion,
+    ): CampoFormulario? {
+        val paginaActual = estado.campoActivo?.pagina ?: estado.paginaActual
+        val enEsta = camposEditablesDe(id, paginaActual)
+        val posicion = enEsta.indexOfFirst { it.id == estado.campoActivo }
+
+        val vecino = if (posicion < 0) enEsta.firstOrNull() else enEsta.getOrNull(posicion + direccion.paso)
+        if (vecino != null) return vecino
+
+        // Se acabaron los de esta página: se busca en la siguiente que tenga.
+        val candidatas =
+            if (direccion == Direccion.SIGUIENTE) {
+                (paginaActual + 1 until estado.paginas)
+            } else {
+                (paginaActual - 1 downTo 0)
+            }
+        for (pagina in candidatas) {
+            val campos = camposEditablesDe(id, pagina)
+            if (campos.isNotEmpty()) {
+                return if (direccion == Direccion.SIGUIENTE) campos.first() else campos.last()
+            }
+        }
+        return null
+    }
+
+    private fun camposEditablesDe(
+        id: IdDocumento,
+        pagina: Int,
+    ): List<CampoFormulario> = (_campos.value[pagina] ?: casos.listarCampos(id, pagina)).filter { it.esEditable }
+
+    /** El desplazamiento ya se ha hecho: no se repite al recomponer. */
+    fun desplazamientoAtendido() {
+        _desplazarA.value = null
     }
 
     fun activarCampo(id: IdCampo?) {
         if (_estado.value.modo != ModoVisor.Formulario) return
-        _estado.value = _estado.value.copy(campoActivo = id)
+        _estado.value = conNavegacion(_estado.value.copy(campoActivo = id))
+    }
+
+    /**
+     * Recalcula si hay campo antes y después del activo.
+     *
+     * Mira primero en la página —que es lo que está cargado— y luego en el índice de
+     * páginas con campos, que puede estar a medias: mientras se completa, la respuesta
+     * es conservadora, y prefiere apagar un botón que encenderlo en falso.
+     */
+    private fun conNavegacion(estado: EstadoVisor): EstadoVisor {
+        if (estado.modo != ModoVisor.Formulario) {
+            return estado.copy(hayCampoAnterior = false, hayCampoSiguiente = false)
+        }
+        val pagina = estado.campoActivo?.pagina ?: estado.paginaActual
+        val editables = _campos.value[pagina].orEmpty().filter { it.esEditable }
+        val posicion = editables.indexOfFirst { it.id == estado.campoActivo }
+
+        val antesEnOtraPagina = estado.paginasConCampos.any { it < pagina }
+        val despuesEnOtraPagina = estado.paginasConCampos.any { it > pagina }
+
+        return estado.copy(
+            hayCampoAnterior = (posicion > 0) || antesEnOtraPagina,
+            hayCampoSiguiente =
+                if (posicion < 0) {
+                    editables.isNotEmpty() || despuesEnOtraPagina
+                } else {
+                    posicion < editables.lastIndex || despuesEnOtraPagina
+                },
+        )
     }
 
     /**
@@ -370,7 +576,10 @@ class VisorViewModel(
     ) {
         val estado = _estado.value
         val id = estado.id ?: return
-        if (estado.modo != ModoVisor.Formulario) return
+        // A propósito no se exige estar en el modo: el volcado de lo que quedó a medio
+        // escribir llega **justo después** de salir de él —al girar el teléfono, al
+        // pulsar «Hecho»—, y exigir el modo aquí tiraría precisamente lo que se estaba
+        // salvando. Lo que se puede tocar y lo que no lo decide el dominio.
 
         viewModelScope.launch {
             val resultado = runCatching { withContext(dispatcherRender) { accion(id) } }
@@ -465,6 +674,7 @@ class VisorViewModel(
         trabajosMiniatura.clear()
         trabajosCampos.values.forEach(Job::cancel)
         trabajosCampos.clear()
+        indexado?.cancel()
         super.onCleared()
     }
 

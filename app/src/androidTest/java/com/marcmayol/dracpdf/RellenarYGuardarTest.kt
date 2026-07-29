@@ -23,6 +23,7 @@ import com.marcmayol.dracpdf.ui.visor.VisorViewModel
 import com.marcmayol.dracpdf.ui.visor.tagCampo
 import com.marcmayol.dracpdf.ui.visor.tagEditor
 import com.marcmayol.dracpdf.ui.visor.tagOpcion
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -50,9 +51,22 @@ class RellenarYGuardarTest {
         val fichero: File,
     )
 
+    /**
+     * Los grafos que ha creado el test. Se cierran al terminar: un documento de MuPDF
+     * que se queda abierto acaba en manos del recolector de basura, que lo destruye
+     * desde su propio hilo y se lleva el proceso por delante.
+     */
+    private val grafos = mutableListOf<Grafo>()
+
+    @After
+    fun cerrarDocumentos() {
+        grafos.forEach { it.alTerminar() }
+        grafos.clear()
+    }
+
     private fun montar(nombre: String): Montaje {
         val fichero = GeneradorFormularios.formulario(File(contexto.cacheDir, nombre))
-        val grafo = Grafo(contexto)
+        val grafo = Grafo(contexto).also(grafos::add)
         grafo.abrirDocumento(OrigenDocumento.Privado(fichero.absolutePath, nombre))
         val estado = grafo.registro.abiertos().first()
         val modelo =

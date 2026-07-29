@@ -125,11 +125,15 @@ fun BarraDelModo(
     alEntrarEnFormulario: () -> Unit,
     alSalirDelFormulario: () -> Unit,
     alGuardar: () -> Unit,
+    alCampoAnterior: () -> Unit,
+    alCampoSiguiente: () -> Unit,
     campos: Int,
     modifier: Modifier = Modifier,
     formularioDisponible: Boolean = false,
     cambiosSinGuardar: Boolean = false,
     guardando: Boolean = false,
+    hayCampoAnterior: Boolean = false,
+    hayCampoSiguiente: Boolean = false,
 ) {
     when (modo) {
         ModoVisor.Lectura ->
@@ -145,8 +149,12 @@ fun BarraDelModo(
                 campos = campos,
                 alSalir = alSalirDelFormulario,
                 alGuardar = alGuardar,
+                alCampoAnterior = alCampoAnterior,
+                alCampoSiguiente = alCampoSiguiente,
                 cambiosSinGuardar = cambiosSinGuardar,
                 guardando = guardando,
+                hayCampoAnterior = hayCampoAnterior,
+                hayCampoSiguiente = hayCampoSiguiente,
                 modifier = modifier,
             )
     }
@@ -228,8 +236,12 @@ fun BarraFormulario(
     alSalir: () -> Unit,
     modifier: Modifier = Modifier,
     alGuardar: () -> Unit = {},
+    alCampoAnterior: () -> Unit = {},
+    alCampoSiguiente: () -> Unit = {},
     cambiosSinGuardar: Boolean = false,
     guardando: Boolean = false,
+    hayCampoAnterior: Boolean = false,
+    hayCampoSiguiente: Boolean = false,
 ) {
     Row(
         modifier =
@@ -270,15 +282,15 @@ fun BarraFormulario(
             BotonIconoLadon(
                 icono = IconosLadon.paginaAnterior,
                 descripcion = "Campo anterior",
-                alPulsar = {},
-                habilitado = false,
+                alPulsar = alCampoAnterior,
+                habilitado = hayCampoAnterior,
                 modifier = Modifier.testTag(TAG_FORM_ANTERIOR),
             )
             BotonIconoLadon(
                 icono = IconosLadon.paginaSiguiente,
                 descripcion = "Campo siguiente",
-                alPulsar = {},
-                habilitado = false,
+                alPulsar = alCampoSiguiente,
+                habilitado = hayCampoSiguiente,
                 modifier = Modifier.testTag(TAG_FORM_SIGUIENTE),
             )
             Row(

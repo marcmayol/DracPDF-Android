@@ -84,7 +84,11 @@ class PersistenciaFormularioTest {
     private fun campo(
         id: IdDocumento,
         nombre: String,
-    ): CampoFormulario = formularios.camposDePagina(id, 0).first { it.nombre == nombre }
+    ): CampoFormulario {
+        val delaPagina = formularios.camposDePagina(id, 0)
+        return delaPagina.firstOrNull { it.nombre == nombre }
+            ?: throw AssertionError("No hay ningún campo «$nombre». Hay: ${delaPagina.map { it.nombre }}")
+    }
 
     private fun idDe(
         id: IdDocumento,

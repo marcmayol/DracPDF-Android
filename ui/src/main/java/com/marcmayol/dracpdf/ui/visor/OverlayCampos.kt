@@ -15,10 +15,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,11 +33,15 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
+import com.marcmayol.dracpdf.dominio.modelo.FormatoTexto
 import com.marcmayol.dracpdf.dominio.modelo.IdCampo
 import com.marcmayol.dracpdf.dominio.modelo.TamanoPt
 import com.marcmayol.dracpdf.dominio.modelo.TipoCampo
@@ -70,6 +76,8 @@ fun OverlayCampos(
     alTocarCampo: (CampoFormulario) -> Unit,
     modifier: Modifier = Modifier,
     alEscribir: (CampoFormulario, String) -> Unit = { _, _ -> },
+    hayCampoSiguiente: Boolean = false,
+    alIrAlSiguiente: () -> Unit = {},
 ) {
     Box(modifier = modifier.fillMaxSize()) {
         campos.forEach { campo ->
@@ -82,6 +90,8 @@ fun OverlayCampos(
                 activo = campo.id == campoActivo,
                 alTocar = { alTocarCampo(campo) },
                 alEscribir = { valor -> alEscribir(campo, valor) },
+                haySiguiente = hayCampoSiguiente,
+                alIrAlSiguiente = alIrAlSiguiente,
             )
         }
     }
@@ -97,6 +107,8 @@ private fun CampoDibujado(
     activo: Boolean,
     alTocar: () -> Unit,
     alEscribir: (String) -> Unit,
+    haySiguiente: Boolean,
+    alIrAlSiguiente: () -> Unit,
 ) {
     // Lo que no se puede rellenar no se resalta. Pintar de ámbar un campo que el
     // emisor bloqueó sería invitar a tocarlo para no dejar escribir después.
@@ -125,7 +137,12 @@ private fun CampoDibujado(
         contentAlignment = if (campo.tipo.esMarca) Alignment.Center else Alignment.CenterStart,
     ) {
         if (campo.tipo == TipoCampo.TEXTO && activo && campo.esEditable) {
-            EditorDeTexto(campo = campo, alEscribir = alEscribir)
+            EditorDeTexto(
+                campo = campo,
+                haySiguiente = haySiguiente,
+                alEscribir = alEscribir,
+                alIrAlSiguiente = alIrAlSiguiente,
+            )
         } else {
             ContenidoDelCampo(campo)
         }
@@ -148,13 +165,26 @@ private fun CampoDibujado(
 @Composable
 private fun EditorDeTexto(
     campo: CampoFormulario,
+    haySiguiente: Boolean,
     alEscribir: (String) -> Unit,
+    alIrAlSiguiente: () -> Unit,
 ) {
     var borrador by remember(campo.id, campo.valor) { mutableStateOf(campo.valor) }
     val foco = remember { FocusRequester() }
     val teclado = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(campo.id) { foco.requestFocus() }
+
+    // Al girar el teléfono, Compose desmonta esto y lo vuelve a montar. Volcar el
+    // borrador al documento en ese momento es lo que hace que no se pierda nada: el
+    // documento es la única fuente de verdad y sobrevive a la rotación, mientras que
+    // cualquier cosa que se quedara aquí, no. Vale igual para salir del modo o para
+    // que la página se vaya de pantalla.
+    val ultimoBorrador by rememberUpdatedState(borrador)
+    val valorDelCampo by rememberUpdatedState(campo.valor)
+    DisposableEffect(campo.id) {
+        onDispose { if (ultimoBorrador != valorDelCampo) alEscribir(ultimoBorrador) }
+    }
 
     BasicTextField(
         value = borrador,
@@ -166,8 +196,20 @@ private fun EditorDeTexto(
         textStyle = ESTILO_VALOR,
         singleLine = !campo.multilinea,
         cursorBrush = SolidColor(ColoresPapel.tinta),
-        keyboardOptions = KeyboardOptions(imeAction = if (campo.multilinea) ImeAction.Default else ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { teclado?.hide() }),
+        visualTransformation =
+            if (campo.esContrasena) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions =
+            KeyboardOptions(
+                keyboardType = tecladoPara(campo),
+                imeAction = accionPara(campo, haySiguiente),
+            ),
+        keyboardActions =
+            KeyboardActions(
+                // «Siguiente» del teclado y «siguiente» de la barra son la misma cosa
+                // y llevan al mismo campo: dos caminos, un solo orden.
+                onNext = { alIrAlSiguiente() },
+                onDone = { teclado?.hide() },
+            ),
         modifier =
             Modifier
                 .fillMaxSize()
@@ -177,6 +219,36 @@ private fun EditorDeTexto(
                 .testTag(tagEditor(campo.id)),
     )
 }
+
+/**
+ * El teclado que toca según lo que el PDF dice que se escribe en el campo.
+ *
+ * Sale del formato declarado y no de adivinar por el nombre: un campo de importe
+ * pide dígitos, uno de teléfono pide su teclado, y una fecha necesita las barras, así
+ * que se queda en el de texto aunque sea «numérica». Un teclado numérico sin
+ * separadores obligaría a cambiar de teclado a mitad de fecha.
+ */
+private fun tecladoPara(campo: CampoFormulario): KeyboardType =
+    when {
+        campo.esContrasena -> KeyboardType.Password
+        campo.formatoTexto == FormatoTexto.NUMERO -> KeyboardType.Number
+        campo.formatoTexto == FormatoTexto.ESPECIAL -> KeyboardType.Phone
+        else -> KeyboardType.Text
+    }
+
+/**
+ * Un campo multilínea necesita su tecla de salto de línea; el resto ofrece
+ * «siguiente» si hay adónde ir, y «hecho» si es el último.
+ */
+private fun accionPara(
+    campo: CampoFormulario,
+    haySiguiente: Boolean,
+): ImeAction =
+    when {
+        campo.multilinea -> ImeAction.Default
+        haySiguiente -> ImeAction.Next
+        else -> ImeAction.Done
+    }
 
 @Composable
 private fun ContenidoDelCampo(campo: CampoFormulario) {

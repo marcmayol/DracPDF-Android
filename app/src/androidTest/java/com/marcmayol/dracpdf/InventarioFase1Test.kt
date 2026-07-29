@@ -36,6 +36,7 @@ import com.marcmayol.dracpdf.ui.visor.TAG_TITULO
 import com.marcmayol.dracpdf.ui.visor.VisorViewModel
 import com.marcmayol.dracpdf.ui.visor.tagMiniatura
 import com.marcmayol.dracpdf.ui.visor.tagPagina
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -205,12 +206,20 @@ class InventarioFase1Test {
         }
     }
 
+    private val grafos = mutableListOf<Grafo>()
+
+    @After
+    fun cerrarDocumentos() {
+        grafos.forEach { it.alTerminar() }
+        grafos.clear()
+    }
+
     private fun visorConDocumento(
         nombre: String,
         paginas: Int,
     ): VisorViewModel {
         val fichero = GeneradorFixtures.documento(File(contexto.cacheDir, nombre), paginas)
-        val grafo = Grafo(contexto)
+        val grafo = Grafo(contexto).also(grafos::add)
         grafo.abrirDocumento(OrigenDocumento.Privado(fichero.absolutePath, nombre))
         val estado = grafo.registro.abiertos().first()
 
