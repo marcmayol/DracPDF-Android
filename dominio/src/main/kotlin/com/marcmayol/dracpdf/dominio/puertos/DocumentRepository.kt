@@ -69,6 +69,27 @@ interface DocumentRepository {
      */
     fun guardarIncremental(id: IdDocumento)
 
+    /**
+     * De dónde salió el documento.
+     *
+     * Hace falta para firmar y para guardar una copia: las dos cosas trabajan sobre el
+     * fichero, y el fichero lo sabe quien lo abrió.
+     */
+    fun origenDe(id: IdDocumento): OrigenDocumento
+
+    /**
+     * Copia el documento tal como está en el fichero a otro sitio.
+     *
+     * Es lo que sostiene la «copia editable» que se ofrece cuando alguien intenta
+     * cambiar un documento firmado. Se copia el fichero y no el documento en memoria a
+     * propósito: así la copia arranca siendo idéntica al original, firmas incluidas, y
+     * es el usuario quien decide qué hacer con ella.
+     */
+    fun copiarA(
+        id: IdDocumento,
+        destino: OrigenDocumento,
+    )
+
     /** Libera el documento. Después de esto su [IdDocumento] ya no vale. */
     fun cerrar(id: IdDocumento)
 }

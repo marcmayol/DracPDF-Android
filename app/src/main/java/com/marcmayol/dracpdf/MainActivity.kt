@@ -246,6 +246,7 @@ private fun fabricaDe(grafo: Grafo) =
                         grafo.cerrarDocumento,
                         grafo.registro,
                         grafo.renderizarPagina,
+                        grafo.firmarDocumento,
                     ) as T
 
                 clase.isAssignableFrom(FirmasViewModel::class.java) ->

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
 import com.marcmayol.dracpdf.dominio.casos.CerrarDocumento
+import com.marcmayol.dracpdf.dominio.casos.FirmarDocumento
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.modelo.ErrorDocumento
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
@@ -47,6 +48,7 @@ class AppViewModel(
     private val cerrarDocumento: CerrarDocumento,
     private val registro: RegistroDocumentos,
     private val renderizarPagina: RenderizarPagina? = null,
+    private val firmarDocumento: FirmarDocumento? = null,
 ) : ViewModel() {
     private val _estado = MutableStateFlow<EstadoApp>(EstadoApp.Inicio)
     val estado: StateFlow<EstadoApp> = _estado.asStateFlow()
@@ -77,7 +79,16 @@ class AppViewModel(
 
             _estado.value =
                 resultado.fold(
-                    onSuccess = { EstadoApp.Viendo(it.id) },
+                    onSuccess = { abierto ->
+                        // Un documento puede llegar ya firmado, y casi siempre lo habrá
+                        // firmado otra persona. Se comprueba al abrir porque a partir de
+                        // ahí hay que tratarlo con cuidado: editar invalidaría la firma
+                        // de alguien.
+                        withContext(Dispatchers.IO) {
+                            runCatching { firmarDocumento?.marcarSiEstaFirmado(abierto.id) }
+                        }
+                        EstadoApp.Viendo(abierto.id)
+                    },
                     onFailure = { fallo -> estadoDelFallo(origen, contrasena, fallo) },
                 )
             refrescarAbiertos()

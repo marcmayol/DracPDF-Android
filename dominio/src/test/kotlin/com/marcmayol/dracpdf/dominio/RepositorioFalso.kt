@@ -22,6 +22,8 @@ class RepositorioFalso(
     val renderizadas = mutableListOf<Pair<Int, Float>>()
     val cerrados = mutableListOf<IdDocumento>()
     val guardados = mutableListOf<IdDocumento>()
+    val copias = mutableListOf<OrigenDocumento>()
+    private var origenAbierto: OrigenDocumento? = null
     var abiertos = 0
         private set
 
@@ -41,6 +43,7 @@ class RepositorioFalso(
             if (contrasena != contrasenaCorrecta) throw ErrorDocumento.ContrasenaIncorrecta(origen)
         }
         abiertos++
+        origenAbierto = origen
         return DocumentoAbierto(
             id = id,
             nombre = nombreDe(origen),
@@ -77,6 +80,15 @@ class RepositorioFalso(
         if (fallaAlGuardar) throw ErrorDocumento.NoSePuedeAbrirElFichero(OrigenDocumento.Privado("/x", "x.pdf"))
         guardados += id
         cambiosPendientes = false
+    }
+
+    override fun origenDe(id: IdDocumento): OrigenDocumento = origenAbierto ?: OrigenDocumento.Privado("/x", "x.pdf")
+
+    override fun copiarA(
+        id: IdDocumento,
+        destino: OrigenDocumento,
+    ) {
+        copias += destino
     }
 
     override fun cerrar(id: IdDocumento) {

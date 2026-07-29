@@ -1,6 +1,9 @@
 package com.marcmayol.dracpdf
 
 import android.content.Context
+import com.marcmayol.dracpdf.adaptadores.firma.EspacioTemporalAndroid
+import com.marcmayol.dracpdf.adaptadores.firma.FicherosDeOrigen
+import com.marcmayol.dracpdf.adaptadores.firma.PdfBoxSignatureService
 import com.marcmayol.dracpdf.adaptadores.firmas.AlmacenFirmasFichero
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfDocumentRepository
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfFormService
@@ -10,6 +13,7 @@ import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
 import com.marcmayol.dracpdf.dominio.casos.CerrarDocumento
 import com.marcmayol.dracpdf.dominio.casos.EstamparFirma
+import com.marcmayol.dracpdf.dominio.casos.FirmarDocumento
 import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
 import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
@@ -46,6 +50,17 @@ class Grafo(
     val formularios = MuPdfFormService(sesiones)
     val sellos = MuPdfStampService(sesiones)
 
+    /**
+     * Quien firma. Es otro motor —PDFBox— y trabaja sobre ficheros, no sobre el
+     * documento abierto: una firma PAdES cubre los bytes del disco.
+     */
+    val firmaDigital =
+        PdfBoxSignatureService(
+            contexto,
+            FicherosDeOrigen(contexto.contentResolver, File(contexto.cacheDir, CARPETA_COPIAS)),
+        )
+    val temporales = EspacioTemporalAndroid(File(contexto.cacheDir, CARPETA_TEMPORALES), fuente)
+
     /** Las firmas viven en el almacenamiento privado: son del usuario, no del sistema. */
     val almacenFirmas = AlmacenFirmasFichero(File(contexto.filesDir, CARPETA_FIRMAS))
 
@@ -56,6 +71,7 @@ class Grafo(
     val rellenarCampo = RellenarCampo(formularios, registro)
     val guardarDocumento = GuardarDocumento(repositorio, registro)
     val estamparFirma = EstamparFirma(sellos, almacenFirmas, repositorio, registro)
+    val firmarDocumento = FirmarDocumento(firmaDigital, repositorio, temporales, registro, guardarDocumento)
 
     /** Lo que el visor necesita, ya montado. */
     val casosDelVisor =
@@ -69,5 +85,7 @@ class Grafo(
 
     private companion object {
         const val CARPETA_FIRMAS = "firmas"
+        const val CARPETA_COPIAS = "para-firmar"
+        const val CARPETA_TEMPORALES = "temporales"
     }
 }

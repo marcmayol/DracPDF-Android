@@ -41,6 +41,16 @@ dependencies {
     // APK se filtran en :app.
     implementation(libs.mupdf.fitz)
 
+    // Quien firma. Va aquí y no en :dominio porque es un detalle de infraestructura:
+    // el dominio sólo conoce el puerto SignatureService.
+    //
+    // Bouncy Castle **no** se declara aparte a propósito, aunque la firma lo use de
+    // arriba abajo: PDFBox-Android arrastra su propia pareja (bcprov + bcpkix,
+    // variante jdk15to18) y añadir la variante jdk18on mete dos Bouncy Castle en el
+    // mismo APK, con las mismas clases en los dos. El que viene con PDFBox es además
+    // el que él tiene probado.
+    implementation(libs.pdfbox.android)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.runner)

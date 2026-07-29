@@ -3,6 +3,9 @@ package com.marcmayol.dracpdf.adaptadores.mupdf
 import com.artifex.mupdf.fitz.ColorSpace
 import com.artifex.mupdf.fitz.Matrix
 import com.artifex.mupdf.fitz.PDFDocument
+import com.artifex.mupdf.fitz.SeekableInputStream
+import com.artifex.mupdf.fitz.SeekableStream
+import com.marcmayol.dracpdf.adaptadores.saf.FlujoEscritura
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentos
 import com.marcmayol.dracpdf.dominio.modelo.DocumentoAbierto
 import com.marcmayol.dracpdf.dominio.modelo.ErrorDocumento
@@ -123,6 +126,48 @@ class MuPdfDocumentRepository(
         }
     }
 
+    override fun origenDe(id: IdDocumento): OrigenDocumento = sesiones.origenDe(id)
+
+    /**
+     * Copia el fichero tal cual, sin pasar por el motor.
+     *
+     * Se copian los bytes y no el documento en memoria a propósito: una copia hecha
+     * volcando el documento sería un PDF reescrito por MuPDF, con sus revisiones
+     * aplanadas y las firmas previas arruinadas. La copia editable de un documento
+     * firmado tiene que arrancar siendo idéntica al original.
+     */
+    override fun copiarA(
+        id: IdDocumento,
+        destino: OrigenDocumento,
+    ) {
+        val origen = sesiones.origenDe(id)
+        fuente.abrirParaEscribir(destino).use { salida ->
+            val entrada = fuente.abrir(origen)
+            try {
+                copiar(entrada, salida)
+            } finally {
+                (entrada as? AutoCloseable)?.let { runCatching { it.close() } }
+            }
+        }
+    }
+
+    private fun copiar(
+        entrada: SeekableInputStream,
+        salida: FlujoEscritura,
+    ) {
+        entrada.seek(0, SeekableStream.SEEK_SET)
+        salida.seek(0, SeekableStream.SEEK_SET)
+        val bufer = ByteArray(TAMANO_BUFER)
+        while (true) {
+            val leidos = entrada.read(bufer)
+            if (leidos <= 0) break
+            salida.write(bufer, 0, leidos)
+        }
+        // Si el destino ya existía y era más largo, lo que sobra tiene que irse: si no,
+        // la cola del fichero viejo quedaría pegada detrás de la copia.
+        salida.truncate()
+    }
+
     override fun cerrar(id: IdDocumento) {
         sesiones.cerrar(id)
     }
@@ -144,5 +189,7 @@ class MuPdfDocumentRepository(
          * `compress` va con él porque la revisión nueva no tiene por qué ser grande.
          */
         const val OPCIONES_INCREMENTAL = "incremental,compress"
+
+        const val TAMANO_BUFER = 64 * 1024
     }
 }
