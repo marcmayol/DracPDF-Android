@@ -203,6 +203,29 @@ class CicloHerramientasTest {
         assertEquals(40, herramientas.paginasDe(destino))
     }
 
+    @Test
+    fun comprimir_lo_ya_optimizado_nunca_deja_un_fichero_mayor() {
+        // Segunda pasada sobre lo ya comprimido: es el caso en el que apretar de nuevo
+        // engorda el fichero. El usuario pidió el más pequeño en ese destino, así que
+        // lo que tiene que llegar es el original.
+        val origen = conImagenes("doble-pasada.pdf", paginas = 4)
+        val primera = destino("primera.pdf")
+        val segunda = destino("segunda.pdf")
+
+        herramientas.comprimir(origen, primera)
+        val reduccion = herramientas.comprimir(primera, segunda)
+
+        val tamanoPrimera = File(primera.identificador).length()
+        assertTrue(
+            "La segunda pasada engordó el fichero: $tamanoPrimera → ${File(segunda.identificador).length()}",
+            File(segunda.identificador).length() <= tamanoPrimera,
+        )
+        assertEquals(tamanoPrimera, reduccion.antes)
+        assertEquals(File(segunda.identificador).length(), reduccion.despues)
+        // Y sigue siendo un PDF legible, no una copia truncada.
+        assertEquals(4, herramientas.paginasDe(segunda))
+    }
+
     // ------------------------------------------------------------------ convertir
 
     @Test

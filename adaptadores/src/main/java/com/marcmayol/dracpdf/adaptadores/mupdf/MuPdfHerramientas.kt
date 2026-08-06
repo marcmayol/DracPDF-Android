@@ -204,7 +204,8 @@ class MuPdfHerramientas(
         destino: OrigenDocumento,
         progreso: Progreso,
     ): Reduccion {
-        val antes = ficheros.comoFichero(origen).length()
+        val fichero = ficheros.comoFichero(origen)
+        val antes = fichero.length()
         var despues = antes
 
         escribiendoEn(destino) { temporal ->
@@ -212,6 +213,13 @@ class MuPdfHerramientas(
                 progreso.paso(0, 1)
                 documento.save(temporal.absolutePath, OPCIONES_APRETADO)
             }
+            // **Se guarda el menor de los dos.** Apretar un PDF puede dejarlo más gordo
+            // —recodificar sus flujos no siempre gana, y con algunos formularios pierde
+            // por bastante—, y entregar eso sería lo contrario de lo que se pidió: quien
+            // pulsa «Comprimir» quiere el fichero más pequeño en ese destino, no el
+            // resultado de un algoritmo. Si no hay mejora se copia el original tal cual y
+            // se dice, que es distinto de fingir que ha encogido.
+            if (temporal.length() >= antes) fichero.copyTo(temporal, overwrite = true)
             despues = temporal.length()
             progreso.paso(1, 1)
             true
