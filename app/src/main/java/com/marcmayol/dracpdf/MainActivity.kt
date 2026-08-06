@@ -38,6 +38,10 @@ import com.marcmayol.dracpdf.dominio.registro.EstadoDocumento
 import com.marcmayol.dracpdf.ui.documentos.DocumentoEnLista
 import com.marcmayol.dracpdf.ui.documentos.HojaDocumentos
 import com.marcmayol.dracpdf.ui.firmas.FirmasViewModel
+import com.marcmayol.dracpdf.ui.herramientas.CasosDeHerramientas
+import com.marcmayol.dracpdf.ui.herramientas.Herramienta
+import com.marcmayol.dracpdf.ui.herramientas.HerramientasViewModel
+import com.marcmayol.dracpdf.ui.herramientas.HojaProgreso
 import com.marcmayol.dracpdf.ui.inicio.HojaContrasena
 import com.marcmayol.dracpdf.ui.inicio.PantallaInicio
 import com.marcmayol.dracpdf.ui.tema.HojaTema
@@ -131,6 +135,31 @@ private fun AplicacionDracPDFUi(
             }
         }
 
+    val herramientasModelo: HerramientasViewModel = viewModel(factory = fabricaDe(grafo))
+    val trabajo by herramientasModelo.estado.collectAsStateWithLifecycle()
+
+    /**
+     * La herramienta elegida espera destino. Se guarda aquí porque el selector del
+     * sistema es una ida y vuelta: cuando el usuario elige dónde guardar, ya no queda
+     * nada en pantalla que recuerde qué había pedido.
+     */
+    var esperandoDestino by remember { mutableStateOf<Herramienta?>(null) }
+
+    val destinoParaGuardar =
+        recordarSelectorDeDestino(
+            herramientaPendiente = { esperandoDestino },
+            alResolver = { herramienta, destino ->
+                esperandoDestino = null
+                val id = (estado as? EstadoApp.Viendo)?.id ?: return@recordarSelectorDeDestino
+                val origen = grafo.repositorio.origenDe(id)
+                when (herramienta) {
+                    Herramienta.COMPRIMIR -> herramientasModelo.comprimir(origen, destino)
+                    Herramienta.CONVERTIR -> herramientasModelo.convertirATexto(origen, destino)
+                    else -> Unit
+                }
+            },
+        )
+
     // Un documento que llega de fuera: del explorador de archivos, del correo, o del
     // menú de compartir de cualquier aplicación.
     LaunchedEffect(intentInicial) {
@@ -141,6 +170,14 @@ private fun AplicacionDracPDFUi(
             MainActivity.intentPendiente = null
             OrigenesDelSistema.delIntent(resolver, pendiente)?.let(appModelo::abrir)
         }
+    }
+
+    if (trabajo.herramienta != null) {
+        HojaProgreso(
+            estado = trabajo,
+            alCancelar = herramientasModelo::cancelar,
+            alCerrar = herramientasModelo::descartarResultado,
+        )
     }
 
     if (temaAbierto) {
@@ -188,6 +225,17 @@ private fun AplicacionDracPDFUi(
                 documentosAbiertos = abiertos.size,
                 alAbrirDocumentos = { documentosAbiertosVisible = true },
                 alAbrirOtro = { selector.launch(arrayOf(TIPO_PDF)) },
+                alElegirHerramienta = { herramienta ->
+                    esperandoDestino = herramienta
+                    destinoParaGuardar.launch(
+                        nombreSugerido(
+                            herramienta,
+                            grafo.registro
+                                .estado(actual.id)
+                                .documento.nombre,
+                        ),
+                    )
+                },
                 firmas = firmasModelo,
             )
 
@@ -250,6 +298,47 @@ private fun EstadoDocumento.aDocumentoEnLista(
     miniatura = miniatura,
 )
 
+/**
+ * El selector de «dónde guardar» del sistema, con la herramienta que lo pidió.
+ *
+ * Vive aparte porque es una ida y vuelta fuera de la aplicación: cuando el usuario
+ * vuelve, en pantalla no queda nada que recuerde qué había pedido, así que la
+ * herramienta se consulta al volver y no se captura al salir.
+ */
+@Composable
+private fun recordarSelectorDeDestino(
+    herramientaPendiente: () -> Herramienta?,
+    alResolver: (Herramienta, OrigenDocumento) -> Unit,
+) = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(TIPO_PDF)) { uri: Uri? ->
+    val herramienta = herramientaPendiente()
+    if (uri != null && herramienta != null) {
+        alResolver(herramienta, OrigenDocumento.Externo(uri.toString(), nombreDeUri(uri)))
+    }
+}
+
+/**
+ * Qué nombre proponer al guardar. Se propone y no se impone: el selector del sistema
+ * deja cambiarlo, y con dos documentos parecidos abiertos el nombre de partida es lo
+ * único que distingue un resultado de otro.
+ */
+private fun nombreSugerido(
+    herramienta: Herramienta,
+    nombreDelDocumento: String,
+): String {
+    val base = nombreDelDocumento.substringBeforeLast('.', nombreDelDocumento)
+    return when (herramienta) {
+        Herramienta.COMPRIMIR -> "$base-comprimido.pdf"
+        Herramienta.CONVERTIR -> "$base.txt"
+        Herramienta.PROTEGER -> "$base-protegido.pdf"
+        Herramienta.DIVIDIR -> "$base-parte1.pdf"
+        Herramienta.UNIR -> "documentos-unidos.pdf"
+        else -> "$base.pdf"
+    }
+}
+
+/** El nombre que el proveedor le ha puesto de verdad al fichero recién creado. */
+private fun nombreDeUri(uri: Uri): String = uri.lastPathSegment?.substringAfterLast('/') ?: "resultado.pdf"
+
 private fun nombreDe(origen: OrigenDocumento): String =
     when (origen) {
         is OrigenDocumento.Externo -> origen.nombre
@@ -279,6 +368,20 @@ private fun fabricaDe(grafo: Grafo) =
 
                 clase.isAssignableFrom(TemaViewModel::class.java) ->
                     TemaViewModel(grafo.ajustesDeInterfaz, grafo.temaInicial) as T
+
+                clase.isAssignableFrom(HerramientasViewModel::class.java) ->
+                    HerramientasViewModel(
+                        CasosDeHerramientas(
+                            unir = grafo.unirDocumentos,
+                            organizar = grafo.organizarPaginas,
+                            dividir = grafo.dividirDocumento,
+                            proteger = grafo.protegerDocumento,
+                            desproteger = grafo.desprotegerDocumento,
+                            comprimir = grafo.comprimirDocumento,
+                            convertir = grafo.convertirDocumento,
+                        ),
+                        grafo.revisarAntesDeOperar,
+                    ) as T
 
                 clase.isAssignableFrom(VisorViewModel::class.java) ->
                     VisorViewModel(

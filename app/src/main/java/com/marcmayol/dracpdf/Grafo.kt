@@ -8,17 +8,27 @@ import com.marcmayol.dracpdf.adaptadores.firma.PdfBoxSignatureService
 import com.marcmayol.dracpdf.adaptadores.firmas.AlmacenFirmasFichero
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfDocumentRepository
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfFormService
+import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfHerramientas
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfStampService
 import com.marcmayol.dracpdf.adaptadores.mupdf.SesionesMuPdf
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
+import com.marcmayol.dracpdf.adaptadores.saf.SalidasDeHerramienta
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
 import com.marcmayol.dracpdf.dominio.casos.CerrarDocumento
+import com.marcmayol.dracpdf.dominio.casos.ComprimirDocumento
+import com.marcmayol.dracpdf.dominio.casos.ConvertirDocumento
+import com.marcmayol.dracpdf.dominio.casos.DesprotegerDocumento
+import com.marcmayol.dracpdf.dominio.casos.DividirDocumento
 import com.marcmayol.dracpdf.dominio.casos.EstamparFirma
 import com.marcmayol.dracpdf.dominio.casos.FirmarDocumento
 import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
+import com.marcmayol.dracpdf.dominio.casos.OrganizarPaginas
+import com.marcmayol.dracpdf.dominio.casos.ProtegerDocumento
 import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
+import com.marcmayol.dracpdf.dominio.casos.RevisarAntesDeOperar
+import com.marcmayol.dracpdf.dominio.casos.UnirDocumentos
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
 import com.marcmayol.dracpdf.ui.tema.PreferenciaTema
 import com.marcmayol.dracpdf.ui.visor.CachePaginas
@@ -72,6 +82,26 @@ class Grafo(
      */
     val ajustesDeInterfaz = AjustesDeInterfaz(contexto)
     val temaInicial: PreferenciaTema = PreferenciaTema.de(ajustesDeInterfaz.temaGuardado())
+
+    /**
+     * La caja de herramientas. Trabaja sobre ficheros y no sobre las sesiones abiertas:
+     * unir toma cinco que nadie está mirando y dividir produce otros tantos.
+     */
+    val herramientas =
+        MuPdfHerramientas(
+            ficheros = FicherosDeOrigen(contexto.contentResolver, File(contexto.cacheDir, CARPETA_COPIAS)),
+            salidas = SalidasDeHerramienta(contexto.contentResolver),
+            carpetaTemporal = File(contexto.cacheDir, CARPETA_TEMPORALES),
+        )
+
+    val revisarAntesDeOperar = RevisarAntesDeOperar(firmaDigital, registro, repositorio)
+    val unirDocumentos = UnirDocumentos(herramientas, firmaDigital)
+    val organizarPaginas = OrganizarPaginas(herramientas, firmaDigital)
+    val dividirDocumento = DividirDocumento(herramientas, firmaDigital)
+    val protegerDocumento = ProtegerDocumento(herramientas, firmaDigital)
+    val desprotegerDocumento = DesprotegerDocumento(herramientas)
+    val comprimirDocumento = ComprimirDocumento(herramientas, firmaDigital)
+    val convertirDocumento = ConvertirDocumento(herramientas)
 
     val abrirDocumento = AbrirDocumento(repositorio, registro)
     val renderizarPagina = RenderizarPagina(repositorio, registro)
