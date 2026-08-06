@@ -277,6 +277,7 @@ fun BarraDelModo(
     modo: ModoVisor,
     alAbrirIndice: () -> Unit,
     alEntrarEnFormulario: () -> Unit,
+    alAbrirHerramientas: () -> Unit,
     alCampoAnterior: () -> Unit,
     alCampoSiguiente: () -> Unit,
     alConfirmarColocacion: () -> Unit,
@@ -295,6 +296,7 @@ fun BarraDelModo(
             BarraInferiorVisor(
                 alAbrirIndice = alAbrirIndice,
                 alAbrirFormulario = alEntrarEnFormulario,
+                alAbrirHerramientas = alAbrirHerramientas,
                 alAbrirFirmas = alAbrirFirmas,
                 formularioDisponible = formularioDisponible,
                 modifier = modifier,
@@ -332,6 +334,7 @@ fun BarraInferiorVisor(
     alAbrirIndice: () -> Unit,
     modifier: Modifier = Modifier,
     alAbrirFormulario: () -> Unit = {},
+    alAbrirHerramientas: () -> Unit = {},
     alAbrirFirmas: () -> Unit = {},
     formularioDisponible: Boolean = false,
 ) {
@@ -370,7 +373,8 @@ fun BarraInferiorVisor(
             icono = IconosLadon.herramientas,
             etiqueta = "Herramientas",
             tag = TAG_DESTINO_HERRAMIENTAS,
-            habilitado = false,
+            habilitado = true,
+            alPulsar = alAbrirHerramientas,
             modifier = Modifier.weight(1f),
         )
         DestinoInferior(

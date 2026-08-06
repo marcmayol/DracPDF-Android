@@ -63,6 +63,8 @@ import com.marcmayol.dracpdf.dominio.modelo.TipoCampo
 import com.marcmayol.dracpdf.ui.firmas.FirmasViewModel
 import com.marcmayol.dracpdf.ui.firmas.HojaDibujarFirma
 import com.marcmayol.dracpdf.ui.firmas.HojaFirmas
+import com.marcmayol.dracpdf.ui.herramientas.Herramienta
+import com.marcmayol.dracpdf.ui.herramientas.HojaHerramientas
 import com.marcmayol.dracpdf.ui.tema.ColoresPapel
 import com.marcmayol.dracpdf.ui.tema.MedidasLadon
 import kotlinx.coroutines.delay
@@ -85,6 +87,7 @@ fun PantallaVisor(
     documentosAbiertos: Int = 1,
     alAbrirDocumentos: () -> Unit = {},
     alAbrirOtro: () -> Unit = {},
+    alElegirHerramienta: (Herramienta) -> Unit = {},
     firmas: FirmasViewModel? = null,
 ) {
     val estado by modelo.estado.collectAsState()
@@ -100,6 +103,7 @@ fun PantallaVisor(
     var saltarA by remember { mutableStateOf<Int?>(null) }
     var opcionesDe by remember { mutableStateOf<CampoFormulario?>(null) }
     var firmasAbiertas by remember { mutableStateOf(false) }
+    var herramientasAbiertas by remember { mutableStateOf(false) }
     var dibujando by remember { mutableStateOf(false) }
 
     // La imagen de la firma que se está colocando sale de la misma caché de
@@ -199,6 +203,7 @@ fun PantallaVisor(
                 modo = estado.modo,
                 alAbrirIndice = { indiceAbierto = true },
                 alEntrarEnFormulario = modelo::entrarEnFormulario,
+                alAbrirHerramientas = { herramientasAbiertas = true },
                 alCampoAnterior = { modelo.irACampo(Direccion.ANTERIOR) },
                 alCampoSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
                 alConfirmarColocacion = modelo::confirmarColocacion,
@@ -246,6 +251,17 @@ fun PantallaVisor(
                 opcionesDe = null
             },
             alCerrar = { opcionesDe = null },
+        )
+    }
+
+    if (herramientasAbiertas) {
+        HojaHerramientas(
+            alElegir = { herramienta ->
+                herramientasAbiertas = false
+                alElegirHerramienta(herramienta)
+            },
+            alCerrar = { herramientasAbiertas = false },
+            documentoFirmado = estado.firmado,
         )
     }
 

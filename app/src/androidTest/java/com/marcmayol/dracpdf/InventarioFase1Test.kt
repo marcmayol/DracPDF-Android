@@ -108,13 +108,8 @@ class InventarioFase1Test {
                 "deshabilitada; y siempre con FIRMADO",
                 habilitada = false,
             ),
-            Accion(
-                TAG_DESTINO_HERRAMIENTAS,
-                "Herramientas",
-                "Fase 6",
-                "deshabilitada en la Fase 1",
-                habilitada = false,
-            ),
+            // Encendida desde la Fase 6: abre la rejilla de la caja de herramientas.
+            Accion(TAG_DESTINO_HERRAMIENTAS, "Herramientas", "hoja de herramientas", "siempre"),
             // Desde la Fase 3 abre la biblioteca de firmas dibujadas; la firma
             // digital, que es otra cosa, sigue siendo de la Fase 4.
             Accion(TAG_DESTINO_FIRMAS, "Firmas", "biblioteca de firmas dibujadas", "siempre"),

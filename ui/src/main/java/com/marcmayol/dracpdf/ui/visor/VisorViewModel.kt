@@ -46,6 +46,11 @@ data class EstadoVisor(
     val campoActivo: IdCampo? = null,
     /** Si hay algo escrito que todavía no está en el fichero. */
     val cambiosSinGuardar: Boolean = false,
+    /**
+     * Si el documento lleva firma. Lo miran las herramientas: las que reescriben el
+     * PDF se apagan, porque el resultado saldría con las firmas rotas.
+     */
+    val firmado: Boolean = false,
     val guardando: Boolean = false,
     /** Lo último que salió mal, para decirlo y no tragárselo. */
     val error: String? = null,
@@ -210,6 +215,7 @@ class VisorViewModel(
                 paginas = estadoDocumento.documento.paginas,
                 paginaActual = estadoDocumento.paginaActual,
                 zoom = estadoDocumento.zoom,
+                firmado = estadoDocumento.documento.estaFirmado,
             )
         viewModelScope.launch {
             val formulario = enElMotor { casos.listarCampos.formulario(id) } ?: return@launch
