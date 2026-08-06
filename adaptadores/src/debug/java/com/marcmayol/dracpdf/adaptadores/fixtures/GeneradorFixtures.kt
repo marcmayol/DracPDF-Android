@@ -1,5 +1,6 @@
 package com.marcmayol.dracpdf.adaptadores.fixtures
 
+import com.artifex.mupdf.fitz.Buffer
 import com.artifex.mupdf.fitz.Font
 import com.artifex.mupdf.fitz.PDFDocument
 import com.artifex.mupdf.fitz.Rect
@@ -72,4 +73,79 @@ object GeneradorFixtures {
             // la escala se aplica mal.
             append("2 w 36 36 ${ANCHO_A4 - 72} ${ALTO_A4 - 72} re S\n")
         }
+
+    /**
+     * Un PDF con una **imagen de verdad** a toda página en cada hoja, guardado sin
+     * comprimir.
+     *
+     * Existe para la compresión: un documento de puro texto encoge por deduplicación y
+     * no demuestra que apretar imágenes haga nada.
+     *
+     * El dibujo es un degradado, **no ruido**: el ruido aleatorio es incompresible por
+     * definición, así que con él el fichero no encoge —crece unos bytes— y la prueba no
+     * demostraría nada. Un degradado guardado en crudo es justo el caso que la
+     * herramienta tiene que mejorar: la foto que nadie optimizó al meterla en el PDF.
+     */
+    fun conImagenes(
+        destino: File,
+        paginas: Int,
+    ): File {
+        val pdf = PDFDocument()
+        try {
+            val caja = Rect(0f, 0f, ANCHO_A4, ALTO_A4)
+            val imagen =
+                pdf.addRawStream(
+                    Buffer().also { it.writeBytes(pixelesDeDegradado()) },
+                    diccionarioDeImagen(pdf),
+                )
+            val recursos =
+                pdf.newDictionary().apply {
+                    put("XObject", pdf.newDictionary().apply { put("Im1", imagen) })
+                }
+
+            repeat(paginas) {
+                // La imagen se estira a la caja de la página: la matriz lleva el ancho y
+                // el alto, y el resto es dibujarla.
+                val hoja = pdf.addPage(caja, 0, recursos, "q $ANCHO_A4 0 0 $ALTO_A4 0 0 cm /Im1 Do Q")
+                pdf.insertPage(-1, hoja)
+            }
+
+            destino.parentFile?.mkdirs()
+            // Sin `compress`: el fixture tiene que llegar gordo para que comprimirlo se
+            // note. Guardarlo ya apretado mediría la compresión contra sí misma.
+            pdf.save(destino.absolutePath, "")
+        } finally {
+            pdf.destroy()
+        }
+        return destino
+    }
+
+    private fun diccionarioDeImagen(pdf: PDFDocument) =
+        pdf.newDictionary().apply {
+            put("Type", pdf.newName("XObject"))
+            put("Subtype", pdf.newName("Image"))
+            put("Width", pdf.newInteger(LADO_IMAGEN))
+            put("Height", pdf.newInteger(LADO_IMAGEN))
+            put("ColorSpace", pdf.newName("DeviceRGB"))
+            put("BitsPerComponent", pdf.newInteger(BITS_POR_COMPONENTE))
+        }
+
+    /** Un degradado en color, que es una imagen de verdad y sí se deja comprimir. */
+    private fun pixelesDeDegradado(): ByteArray {
+        val pixeles = ByteArray(LADO_IMAGEN * LADO_IMAGEN * CANALES)
+        var i = 0
+        for (y in 0 until LADO_IMAGEN) {
+            for (x in 0 until LADO_IMAGEN) {
+                pixeles[i++] = (x * MAXIMO_CANAL / LADO_IMAGEN).toByte()
+                pixeles[i++] = (y * MAXIMO_CANAL / LADO_IMAGEN).toByte()
+                pixeles[i++] = ((x + y) * MAXIMO_CANAL / (2 * LADO_IMAGEN)).toByte()
+            }
+        }
+        return pixeles
+    }
+
+    private const val LADO_IMAGEN = 320
+    private const val CANALES = 3
+    private const val BITS_POR_COMPONENTE = 8
+    private const val MAXIMO_CANAL = 255
 }

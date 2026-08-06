@@ -56,20 +56,27 @@ class CicloHerramientasTest {
     // ------------------------------------------------------------------------ unir
 
     @Test
-    fun unir_respeta_el_orden_en_que_se_eligieron() {
+    fun unir_tres_documentos_respeta_el_orden_en_que_se_eligieron() {
         val primero = documento("uno.pdf", paginas = 2)
         val segundo = documento("dos.pdf", paginas = 3)
+        val tercero = documento("tres.pdf", paginas = 1)
         val destino = destino("unido.pdf")
 
-        herramientas.unir(listOf(primero, segundo), destino)
+        herramientas.unir(listOf(primero, segundo, tercero), destino)
 
-        assertEquals(5, herramientas.paginasDe(destino))
-        val texto = textoDe(destino)
-        // Las dos del primero van delante y las tres del segundo detrás. Que estén
-        // todas no basta: lo que se comprueba es en qué orden.
+        assertEquals(6, herramientas.paginasDe(destino))
+        // Que estén todas no basta: lo que se comprueba es **en qué orden**, y con tres
+        // documentos el del medio es el que delata un orden mal montado.
         assertEquals(
-            listOf("Pagina 1 de 2", "Pagina 2 de 2", "Pagina 1 de 3", "Pagina 2 de 3", "Pagina 3 de 3"),
-            texto,
+            listOf(
+                "Pagina 1 de 2",
+                "Pagina 2 de 2",
+                "Pagina 1 de 3",
+                "Pagina 2 de 3",
+                "Pagina 3 de 3",
+                "Pagina 1 de 1",
+            ),
+            textoDe(destino),
         )
     }
 
@@ -162,6 +169,25 @@ class CicloHerramientasTest {
     // ------------------------------------------------------------------ comprimir
 
     @Test
+    fun comprimir_un_pdf_con_imagenes_reporta_la_reduccion() {
+        // Las imágenes son lo que de verdad ocupa en un PDF, y lo que la compresión
+        // tiene que morder: un documento de puro texto encoge por deduplicación y no
+        // demuestra que `compress-images` haga nada.
+        val origen = conImagenes("con-fotos.pdf", paginas = 6)
+        val destino = destino("con-fotos-apretado.pdf")
+
+        val reduccion = herramientas.comprimir(origen, destino)
+
+        assertEquals(File(origen.identificador).length(), reduccion.antes)
+        assertEquals(File(destino.identificador).length(), reduccion.despues)
+        assertTrue(
+            "No encogió un PDF con imágenes: ${reduccion.antes} → ${reduccion.despues}",
+            reduccion.despues < reduccion.antes,
+        )
+        assertEquals(6, herramientas.paginasDe(destino))
+    }
+
+    @Test
     fun comprimir_mide_el_antes_y_el_despues_de_verdad() {
         // Un documento con las mismas páginas repetidas: hay mucho que deduplicar, que
         // es justo lo que la compresión sabe hacer.
@@ -248,6 +274,20 @@ class CicloHerramientasTest {
     }
 
     private fun destino(nombre: String) = OrigenDocumento.Privado(File(taller, nombre).absolutePath, nombre)
+
+    /**
+     * Un PDF con una imagen a toda página en cada hoja, sin comprimir.
+     *
+     * Se genera aquí y no en el generador común porque sólo lo necesita la compresión:
+     * el resto de herramientas no distingue una página con foto de una con texto.
+     */
+    private fun conImagenes(
+        nombre: String,
+        paginas: Int,
+    ): OrigenDocumento {
+        val fichero = GeneradorFixtures.conImagenes(File(taller, nombre), paginas = paginas)
+        return OrigenDocumento.Privado(fichero.absolutePath, nombre)
+    }
 
     /** La primera línea de texto de cada página, que en el fixture dice qué página es. */
     private fun textoDe(origen: OrigenDocumento): List<String> {
