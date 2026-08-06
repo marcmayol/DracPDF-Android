@@ -65,4 +65,18 @@ sealed class ErrorDocumento(
     class DocumentoFirmado(
         val id: IdDocumento,
     ) : ErrorDocumento("El documento ${id.valor} está firmado: editarlo invalidaría la firma")
+
+    /**
+     * Lo mismo, pero de un fichero que nadie está mirando: uno de los que se han
+     * elegido para unir, dividir o comprimir.
+     *
+     * Va aparte de [DocumentoFirmado] porque aquí no hay sesión que nombrar, y quien
+     * lo enseñe tiene que decir **cuál** de los ficheros elegidos es el firmado: con
+     * cinco en la lista, «uno está firmado» no sirve de nada.
+     */
+    class FicheroFirmado(
+        val origen: OrigenDocumento,
+    ) : ErrorDocumento(
+            "«${origen.identificador}» está firmado: la operación produciría un documento con las firmas rotas",
+        )
 }
