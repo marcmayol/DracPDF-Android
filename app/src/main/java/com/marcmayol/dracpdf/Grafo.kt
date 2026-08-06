@@ -1,6 +1,7 @@
 package com.marcmayol.dracpdf
 
 import android.content.Context
+import com.marcmayol.dracpdf.adaptadores.ajustes.AjustesDeInterfaz
 import com.marcmayol.dracpdf.adaptadores.firma.EspacioTemporalAndroid
 import com.marcmayol.dracpdf.adaptadores.firma.FicherosDeOrigen
 import com.marcmayol.dracpdf.adaptadores.firma.PdfBoxSignatureService
@@ -19,6 +20,7 @@ import com.marcmayol.dracpdf.dominio.casos.ListarCampos
 import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
+import com.marcmayol.dracpdf.ui.tema.PreferenciaTema
 import com.marcmayol.dracpdf.ui.visor.CachePaginas
 import com.marcmayol.dracpdf.ui.visor.CasosDelVisor
 import java.io.File
@@ -63,6 +65,13 @@ class Grafo(
 
     /** Las firmas viven en el almacenamiento privado: son del usuario, no del sistema. */
     val almacenFirmas = AlmacenFirmasFichero(File(contexto.filesDir, CARPETA_FIRMAS))
+
+    /**
+     * Lo que el usuario eligió sobre la interfaz. Se lee aquí, en el arranque de la
+     * aplicación, porque el tema tiene que estar decidido antes del primer fotograma.
+     */
+    val ajustesDeInterfaz = AjustesDeInterfaz(contexto)
+    val temaInicial: PreferenciaTema = PreferenciaTema.de(ajustesDeInterfaz.temaGuardado())
 
     val abrirDocumento = AbrirDocumento(repositorio, registro)
     val renderizarPagina = RenderizarPagina(repositorio, registro)

@@ -3,6 +3,7 @@ package com.marcmayol.dracpdf.ui.visor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,9 +11,15 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -39,6 +46,7 @@ fun BarraSuperiorVisor(
     modifier: Modifier = Modifier,
     documentosAbiertos: Int = 1,
     alAbrirDocumentos: () -> Unit = {},
+    alAbrirOtro: () -> Unit = {},
 ) {
     Row(
         modifier =
@@ -101,11 +109,157 @@ fun BarraSuperiorVisor(
             habilitado = false,
             modifier = Modifier.testTag(TAG_BUSCAR),
         )
-        BotonIconoLadon(
+        Box {
+            var menuAbierto by remember { mutableStateOf(false) }
+            BotonIconoLadon(
+                icono = IconosLadon.mas,
+                descripcion = "Más acciones",
+                alPulsar = { menuAbierto = true },
+                modifier = Modifier.testTag(TAG_MENU),
+            )
+            MenuDelVisor(
+                abierto = menuAbierto,
+                alCerrar = { menuAbierto = false },
+                alAbrirDocumentos = {
+                    menuAbierto = false
+                    alAbrirDocumentos()
+                },
+                alAbrirOtro = {
+                    menuAbierto = false
+                    alAbrirOtro()
+                },
+            )
+        }
+    }
+}
+
+/**
+ * El ⋮ del visor: lo que en el escritorio era el menú Archivo.
+ *
+ * «Documentos abiertos» vive aquí y no como botón suelto de la barra, que es donde
+ * estuvo hasta la revisión de conformidad: el diseño reserva los cuatro sitios de la
+ * barra para atrás · nombre · buscar · ⋮, y la lista de abiertos tiene su entrada
+ * principal en el propio nombre del archivo, con el chevron que lo delata.
+ *
+ * El resto son las acciones de documento de la §15. Se ven apagadas hasta que su fase
+ * las traiga: un menú que cambia de largo entre versiones obliga a volver a buscarlo
+ * todo cada vez.
+ */
+@Composable
+private fun MenuDelVisor(
+    abierto: Boolean,
+    alCerrar: () -> Unit,
+    alAbrirDocumentos: () -> Unit,
+    alAbrirOtro: () -> Unit,
+) {
+    DropdownMenu(
+        expanded = abierto,
+        onDismissRequest = alCerrar,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        EntradaDeMenu(
+            etiqueta = "Documentos abiertos",
             icono = IconosLadon.documentos,
-            descripcion = "Documentos abiertos",
             alPulsar = alAbrirDocumentos,
-            modifier = Modifier.testTag(TAG_MENU),
+            tag = TAG_MENU_DOCUMENTOS,
+        )
+        EntradaDeMenu(
+            etiqueta = "Abrir otro PDF",
+            icono = IconosLadon.abrir,
+            alPulsar = alAbrirOtro,
+            tag = TAG_MENU_ABRIR,
+        )
+        EntradaDeMenu("Guardar una copia", IconosLadon.guardar, tag = TAG_MENU_COPIA)
+        EntradaDeMenu("Imprimir", IconosLadon.imprimir, tag = TAG_MENU_IMPRIMIR)
+        EntradaDeMenu("Compartir", IconosLadon.compartir, tag = TAG_MENU_COMPARTIR)
+        EntradaDeMenu("Propiedades", IconosLadon.propiedades, tag = TAG_MENU_PROPIEDADES)
+    }
+}
+
+@Composable
+private fun EntradaDeMenu(
+    etiqueta: String,
+    icono: Int,
+    tag: String,
+    alPulsar: (() -> Unit)? = null,
+) {
+    DropdownMenuItem(
+        text = { Text(etiqueta, style = MaterialTheme.typography.bodyLarge) },
+        leadingIcon = {
+            IconoLadon(
+                icono = icono,
+                descripcion = null,
+                estado = if (alPulsar == null) EstadoIcono.DESHABILITADO else EstadoIcono.APAGADO,
+            )
+        },
+        enabled = alPulsar != null,
+        onClick = alPulsar ?: {},
+        modifier = Modifier.testTag(tag),
+    )
+}
+
+/**
+ * La barra superior de un modo, que **sustituye** a la del visor mientras el modo
+ * dura: ✕ a la izquierda, el nombre del modo, y su acción de confirmación a la
+ * derecha.
+ *
+ * La regla del diseño es que nunca conviven dos barras superiores, y tiene su razón:
+ * con la del documento todavía puesta, «atrás» y «✕» aparecen a la vez —dos maneras
+ * de salir de dos cosas distintas, a un centímetro la una de la otra— y la de arriba
+ * invita a cerrar el documento cuando lo que se quería era cerrar el modo.
+ */
+@Composable
+fun BarraSuperiorDelModo(
+    titulo: String,
+    accion: String,
+    alCerrar: () -> Unit,
+    alAccionar: () -> Unit,
+    modifier: Modifier = Modifier,
+    accionHabilitada: Boolean = true,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .statusBarsPadding()
+                .heightIn(min = MedidasLadon.barraSuperior)
+                .padding(horizontal = 6.dp)
+                .testTag(TAG_BARRA_MODO),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BotonIconoLadon(
+            icono = IconosLadon.cerrar,
+            descripcion = "Salir del modo $titulo",
+            alPulsar = alCerrar,
+            modifier = Modifier.testTag(TAG_MODO_CERRAR),
+        )
+        Text(
+            text = titulo,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(horizontal = 4.dp).testTag(TAG_MODO_TITULO),
+        )
+        Text(
+            text = accion,
+            style = MaterialTheme.typography.labelLarge,
+            // Deshabilitada se apaga, no desaparece: que «Guardar» esté ahí gris es lo
+            // que dice que no queda nada por guardar.
+            color =
+                if (accionHabilitada) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = ALFA_DESHABILITADO)
+                },
+            modifier =
+                Modifier
+                    .heightIn(min = MedidasLadon.areaTactil)
+                    .clickable(enabled = accionHabilitada, onClick = alAccionar)
+                    .padding(horizontal = 12.dp, vertical = 14.dp)
+                    .semantics { role = Role.Button }
+                    .testTag(TAG_MODO_ACCION),
         )
     }
 }
@@ -123,8 +277,6 @@ fun BarraDelModo(
     modo: ModoVisor,
     alAbrirIndice: () -> Unit,
     alEntrarEnFormulario: () -> Unit,
-    alSalirDelFormulario: () -> Unit,
-    alGuardar: () -> Unit,
     alCampoAnterior: () -> Unit,
     alCampoSiguiente: () -> Unit,
     alConfirmarColocacion: () -> Unit,
@@ -158,8 +310,6 @@ fun BarraDelModo(
         ModoVisor.Formulario ->
             BarraFormulario(
                 campos = campos,
-                alSalir = alSalirDelFormulario,
-                alGuardar = alGuardar,
                 alCampoAnterior = alCampoAnterior,
                 alCampoSiguiente = alCampoSiguiente,
                 cambiosSinGuardar = cambiosSinGuardar,
@@ -235,20 +385,17 @@ fun BarraInferiorVisor(
 }
 
 /**
- * La barra del modo de formulario: cuántos campos hay, ir al anterior y al
- * siguiente, y salir.
+ * La barra inferior del modo de formulario: por qué campo se va, y cómo ir al
+ * anterior y al siguiente.
  *
- * Existe **sólo** dentro del modo, y de ahí que «Hecho» no pueda aparecer donde no
- * hay nada que dar por hecho. La navegación entre campos llega con el foco, en la
- * tarea 4 de esta fase; hasta entonces se ve y no se pulsa, como el resto de lo que
- * aún no está.
+ * Salir y guardar **no** están aquí: son la ✕ y la acción de la barra de arriba,
+ * donde el diseño pone la confirmación de todo modo. Abajo queda lo que se usa
+ * mientras se rellena, que es justo lo que el pulgar alcanza sin soltar el teléfono.
  */
 @Composable
 fun BarraFormulario(
     campos: Int,
-    alSalir: () -> Unit,
     modifier: Modifier = Modifier,
-    alGuardar: () -> Unit = {},
     alCampoAnterior: () -> Unit = {},
     alCampoSiguiente: () -> Unit = {},
     cambiosSinGuardar: Boolean = false,
@@ -284,15 +431,6 @@ fun BarraFormulario(
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             BotonIconoLadon(
-                icono = IconosLadon.guardar,
-                descripcion = "Guardar los cambios",
-                alPulsar = alGuardar,
-                // Sin cambios no hay nada que guardar, y guardar dos veces lo mismo
-                // dejaría una revisión vacía en el fichero.
-                habilitado = cambiosSinGuardar && !guardando,
-                modifier = Modifier.testTag(TAG_FORM_GUARDAR),
-            )
-            BotonIconoLadon(
                 icono = IconosLadon.paginaAnterior,
                 descripcion = "Campo anterior",
                 alPulsar = alCampoAnterior,
@@ -306,21 +444,6 @@ fun BarraFormulario(
                 habilitado = hayCampoSiguiente,
                 modifier = Modifier.testTag(TAG_FORM_SIGUIENTE),
             )
-            Row(
-                modifier =
-                    Modifier
-                        .heightIn(min = MedidasLadon.areaTactil)
-                        .clickable(onClick = alSalir)
-                        .padding(horizontal = 12.dp)
-                        .testTag(TAG_FORM_HECHO),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "Hecho",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
         }
     }
 }
@@ -430,7 +553,15 @@ private const val ALFA_DESHABILITADO = 0.38f
 const val TAG_ATRAS = "visor_atras"
 const val TAG_TITULO = "visor_titulo"
 const val TAG_BUSCAR = "visor_buscar"
+
+/** El ⋮ del visor y lo que despliega. */
 const val TAG_MENU = "visor_menu"
+const val TAG_MENU_DOCUMENTOS = "visor_menu_documentos"
+const val TAG_MENU_ABRIR = "visor_menu_abrir"
+const val TAG_MENU_COPIA = "visor_menu_copia"
+const val TAG_MENU_IMPRIMIR = "visor_menu_imprimir"
+const val TAG_MENU_COMPARTIR = "visor_menu_compartir"
+const val TAG_MENU_PROPIEDADES = "visor_menu_propiedades"
 const val TAG_DESTINO_INDICE = "visor_destino_indice"
 const val TAG_DESTINO_FORMULARIO = "visor_destino_formulario"
 const val TAG_DESTINO_HERRAMIENTAS = "visor_destino_herramientas"
@@ -441,8 +572,12 @@ const val TAG_BARRA_FORMULARIO = "visor_barra_formulario"
 const val TAG_FORM_CONTADOR = "visor_form_contador"
 const val TAG_FORM_ANTERIOR = "visor_form_anterior"
 const val TAG_FORM_SIGUIENTE = "visor_form_siguiente"
-const val TAG_FORM_HECHO = "visor_form_hecho"
-const val TAG_FORM_GUARDAR = "visor_form_guardar"
+
+/** La barra superior de un modo: la ✕, el título y la acción de confirmación. */
+const val TAG_BARRA_MODO = "visor_barra_modo"
+const val TAG_MODO_CERRAR = "visor_modo_cerrar"
+const val TAG_MODO_TITULO = "visor_modo_titulo"
+const val TAG_MODO_ACCION = "visor_modo_accion"
 
 const val TAG_BARRA_COLOCACION = "visor_barra_colocacion"
 const val TAG_COLOCACION_CANCELAR = "visor_colocacion_cancelar"

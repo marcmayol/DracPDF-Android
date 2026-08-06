@@ -10,9 +10,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -57,9 +60,13 @@ fun HojaDocumentos(
     alCerrarTodos: () -> Unit,
     alCerrar: () -> Unit,
     modifier: Modifier = Modifier,
+    // Abrirla ya entera en vez de a media altura. Es un booleano y no el `SheetState`
+    // de Material para no obligar a cada llamante a aceptar una API experimental que no
+    // le hace falta. Lo usa el test de viewport, que necesita ver el pie sin arrastrar
+    // la hoja a mano.
+    expandidaDelTodo: Boolean = false,
 ) {
-    val estadoHoja = rememberModalBottomSheetState()
-
+    val estadoHoja = rememberModalBottomSheetState(skipPartiallyExpanded = expandidaDelTodo)
     LaunchedEffect(documentos.size) {
         documentos.filter { it.miniatura == null }.forEach { alPedirMiniatura(it.id) }
     }
@@ -92,15 +99,30 @@ fun HojaDocumentos(
             )
         }
 
+        // La lista cede el sitio al pie y se desplaza dentro de lo que le queda.
+        // Antes crecía sin freno: con ocho documentos abiertos, «Abrir otro PDF» y
+        // «Cerrar todos» quedaban fuera de la pantalla y no había manera de llegar a
+        // ellos, porque tampoco había scroll que los trajera.
         ListaDocumentos(
             documentos = documentos,
             alElegir = alElegir,
             alCerrarDocumento = alCerrarDocumento,
-            modifier = Modifier.testTag(TAG_LISTA_DOCUMENTOS),
+            modifier =
+                Modifier
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+                    .testTag(TAG_LISTA_DOCUMENTOS),
         )
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 24.dp, top = 4.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    // Los 24 dp de aire de la maqueta se miden desde donde acaba la
+                    // pantalla, no desde donde empiezan los botones del sistema.
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 24.dp, top = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {

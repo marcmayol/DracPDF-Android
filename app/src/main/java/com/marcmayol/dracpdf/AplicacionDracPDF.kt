@@ -1,7 +1,6 @@
 package com.marcmayol.dracpdf
 
 import android.app.Application
-import android.content.ComponentCallbacks2
 
 /**
  * La aplicación. Guarda el grafo y el registro de documentos, que tienen que
@@ -28,10 +27,17 @@ class AplicacionDracPDF : Application() {
         grafo.cachePaginas.vaciar()
     }
 
+    /**
+     * Cualquier aviso de recorte vacía la caché, sin mirar el nivel.
+     *
+     * Los niveles intermedios —`TRIM_MEMORY_RUNNING_LOW` y compañía— están deprecados
+     * desde Android 14 y el sistema ya no los manda, así que comparar contra ellos
+     * significaba dejar de soltar memoria justo en los teléfonos nuevos. Y no hace
+     * falta afinar: el sistema no llama aquí por capricho, y lo que se suelta son
+     * páginas rasterizadas que se vuelven a dibujar en milisegundos.
+     */
     override fun onTrimMemory(nivel: Int) {
         super.onTrimMemory(nivel)
-        if (nivel >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
-            grafo.cachePaginas.vaciar()
-        }
+        grafo.cachePaginas.vaciar()
     }
 }

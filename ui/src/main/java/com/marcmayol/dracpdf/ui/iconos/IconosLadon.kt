@@ -4,16 +4,18 @@ import androidx.annotation.DrawableRes
 import com.marcmayol.dracpdf.ui.R
 
 /**
- * Los 56 iconos Android del paquete de identidad Ladón, tal como los entregó Claude Design.
+ * Los 58 iconos Android del paquete de identidad Ladón, tal como los entregó Claude Design.
  *
  * Los ficheros de `res/drawable/ic_*.xml` son copia literal de
  * `design-handoff/export/icons/android-vector/`: retícula de 24, trazo de 2,
  * terminales redondeados, un solo color. No se redibujan, no se optimizan y no se
  * inventan: si la interfaz necesita un icono que no está aquí, se pide al diseño.
  *
- * Son 56 y no los 59 del paquete: `present`, `fullscreen` y `more_horiz` se quedan
- * fuera porque en móvil no existen —pantalla completa es el modo inmersivo, que no
- * tiene botón, y el menú es siempre el ⋮ vertical— y viven ahí para el escritorio.
+ * Son 58: los 56 de la entrega original más `help` y `about`, que llegaron con la
+ * revisión de conformidad de la Fase 5. Tres del paquete se quedan fuera —`present`,
+ * `fullscreen` y `more_horiz`— porque en móvil no existen: pantalla completa es el
+ * modo inmersivo, que no tiene botón, y el menú es siempre el ⋮ vertical. Viven en el
+ * paquete para el DracPDF de escritorio, que sí los usa.
  *
  * El color no viene en el asset —los XML llevan negro literal dentro— sino de quien
  * los pinta. Ver [TintesLadon].
@@ -119,6 +121,22 @@ object IconosLadon {
 
     @DrawableRes val tema = R.drawable.ic_theme
 
+    /**
+     * Ayuda. Es un «?» en círculo y no la (i) que dibujaba la maqueta: el diseño
+     * avisó de que la (i) en círculo **ya está cogida** por [propiedades], que son los
+     * datos del PDF. Los dos comparten círculo a propósito, para que se lean como
+     * familia y no como el mismo icono repetido.
+     */
+    @DrawableRes val ayuda = R.drawable.ic_help
+
+    /**
+     * «Acerca de DracPDF»: la marca, sin glifo nuevo. El diseño aceptó que una hoja de
+     * documento suelta habría chocado con [documentos] en un lector de PDF, y aquí la
+     * pantalla habla literalmente del dragón. Es un PNG monocromo por densidades, no un
+     * vector: viene dibujado para 24 dp, no reducido desde la silueta de 512 px.
+     */
+    @DrawableRes val acercaDe = R.drawable.ic_about
+
     @DrawableRes val herramientas = R.drawable.ic_tools
 
     @DrawableRes val eliminar = R.drawable.ic_trash
@@ -200,5 +218,7 @@ object IconosLadon {
             verificar,
             acercar,
             alejar,
+            ayuda,
+            acercaDe,
         )
 }

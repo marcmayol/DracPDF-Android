@@ -3,8 +3,9 @@ package com.marcmayol.dracpdf
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -47,12 +48,13 @@ class AperturaTest {
         composicion.setContent {
             TemaDracPDF { PantallaInicio(alAbrirPdf = {}) }
         }
+        composicion.waitForIdle()
 
         composicion.onNodeWithTag(TAG_ABRIR).assertIsDisplayed()
         composicion.onNodeWithTag(TAG_DRAGON).assertIsDisplayed()
-        // El menú de la pantalla de inicio se ve y no se puede usar: su contenido está
-        // pedido al diseño y llega con las fases que lo llenan.
-        composicion.onNodeWithTag(TAG_MENU_INICIO).assertIsNotEnabled()
+        // Desde la Fase 5 el menú de la pantalla de inicio ya despliega el del diseño:
+        // «Tema» funciona y las otras tres esperan a su fase.
+        composicion.onNodeWithTag(TAG_MENU_INICIO).assertIsEnabled()
     }
 
     @Test
@@ -139,6 +141,7 @@ class AperturaTest {
                 )
             }
         }
+        composicion.waitForIdle()
 
         composicion.onNodeWithTag(TAG_ERROR_CONTRASENA).assertIsDisplayed()
         // Sin contraseña escrita no hay nada que probar, así que el botón espera.

@@ -3,7 +3,7 @@ package com.marcmayol.dracpdf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -21,8 +21,8 @@ import com.marcmayol.dracpdf.ui.visor.TAG_BARRA_FORMULARIO
 import com.marcmayol.dracpdf.ui.visor.TAG_DESTINO_FORMULARIO
 import com.marcmayol.dracpdf.ui.visor.TAG_FORM_ANTERIOR
 import com.marcmayol.dracpdf.ui.visor.TAG_FORM_CONTADOR
-import com.marcmayol.dracpdf.ui.visor.TAG_FORM_HECHO
 import com.marcmayol.dracpdf.ui.visor.TAG_FORM_SIGUIENTE
+import com.marcmayol.dracpdf.ui.visor.TAG_MODO_CERRAR
 import com.marcmayol.dracpdf.ui.visor.VisorViewModel
 import com.marcmayol.dracpdf.ui.visor.tagCampo
 import org.junit.After
@@ -163,7 +163,7 @@ class InventarioFase2Test {
 
         // No es que estén deshabilitados: es que no se han compuesto siquiera.
         composicion.onNodeWithTag(TAG_BARRA_FORMULARIO).assertDoesNotExist()
-        composicion.onNodeWithTag(TAG_FORM_HECHO).assertDoesNotExist()
+        composicion.onNodeWithTag(TAG_MODO_CERRAR).assertDoesNotExist()
         composicion.onNodeWithTag(TAG_FORM_CONTADOR).assertDoesNotExist()
         composicion.onNodeWithTag(tagCampo(IdCampo(0, 0))).assertDoesNotExist()
     }
@@ -177,8 +177,8 @@ class InventarioFase2Test {
 
         composicion.onNodeWithTag(TAG_BARRA_FORMULARIO).assertIsDisplayed()
         composicion.onNodeWithTag(TAG_FORM_CONTADOR).assertIsDisplayed()
-        composicion.onNodeWithTag(TAG_FORM_HECHO).assertIsDisplayed()
-        composicion.onNodeWithTag(TAG_FORM_HECHO).assertIsEnabled()
+        composicion.onNodeWithTag(TAG_MODO_CERRAR).assertIsDisplayed()
+        composicion.onNodeWithTag(TAG_MODO_CERRAR).assertIsEnabled()
         // Sin campo activo todavía no hay ninguno detrás, pero sí delante: «siguiente»
         // lleva al primero, que es lo que espera quien acaba de entrar al modo.
         composicion.onNodeWithTag(TAG_FORM_ANTERIOR).assertIsNotEnabled()
@@ -193,11 +193,11 @@ class InventarioFase2Test {
         entrarEnFormulario(modelo)
         composicion.onNodeWithTag(TAG_BARRA_FORMULARIO).assertIsDisplayed()
 
-        composicion.onNodeWithTag(TAG_FORM_HECHO).performClick()
+        composicion.onNodeWithTag(TAG_MODO_CERRAR).performClick()
         composicion.waitForIdle()
 
         composicion.onNodeWithTag(TAG_BARRA_FORMULARIO).assertDoesNotExist()
-        composicion.onNodeWithTag(TAG_FORM_HECHO).assertDoesNotExist()
+        composicion.onNodeWithTag(TAG_MODO_CERRAR).assertDoesNotExist()
         composicion.onNodeWithTag(tagCampo(IdCampo(0, 0))).assertDoesNotExist()
         // Y vuelve la barra de lectura, con su destino de formulario otra vez.
         composicion.onNodeWithTag(TAG_DESTINO_FORMULARIO).assertIsDisplayed()

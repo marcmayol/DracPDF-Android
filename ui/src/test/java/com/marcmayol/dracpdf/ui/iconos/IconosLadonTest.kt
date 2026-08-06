@@ -12,10 +12,11 @@ import org.junit.Test
  */
 class IconosLadonTest {
     @Test
-    fun `el catalogo tiene los 56 iconos que Android usa`() {
-        // 56 y no los 59 del paquete: present, fullscreen y more_horiz son del
-        // escritorio, y en móvil no existen.
-        assertEquals(56, IconosLadon.todos.size)
+    fun `el catalogo tiene los 58 iconos que Android usa`() {
+        // 56 de la entrega original —present, fullscreen y more_horiz son del
+        // escritorio y en móvil no existen— más help y about, que llegaron con la
+        // revisión de conformidad de la Fase 5.
+        assertEquals(58, IconosLadon.todos.size)
     }
 
     @Test

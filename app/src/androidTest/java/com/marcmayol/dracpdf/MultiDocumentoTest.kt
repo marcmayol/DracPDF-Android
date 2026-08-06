@@ -1,7 +1,7 @@
 package com.marcmayol.dracpdf
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -156,6 +156,7 @@ class MultiDocumentoTest {
                 )
             }
         }
+        composicion.waitForIdle()
 
         composicion.onNodeWithTag(TAG_HOJA_DOCUMENTOS).assertIsDisplayed()
         composicion.onNodeWithTag(tagDocumento("doc-1")).assertIsDisplayed()

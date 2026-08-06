@@ -9,10 +9,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -61,6 +64,7 @@ fun HojaIndice(
 ) {
     val estadoHoja = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val rejilla = rememberLazyGridState()
+    val barraDeNavegacion = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     LaunchedEffect(rejilla, paginas) {
         snapshotFlow { rejilla.layoutInfo.visibleItemsInfo.map { it.index } }
@@ -96,7 +100,17 @@ fun HojaIndice(
             columns = GridCells.Fixed(COLUMNAS),
             state = rejilla,
             modifier = Modifier.fillMaxSize().testTag(TAG_REJILLA_MINIATURAS),
-            contentPadding = PaddingValues(MedidasLadon.margen),
+            // El aire de abajo va en el `contentPadding` y no en un padding del
+            // contenedor: así la última fila de miniaturas se puede subir por encima de
+            // la barra de navegación, pero la rejilla sigue desplazándose hasta el
+            // borde.
+            contentPadding =
+                PaddingValues(
+                    start = MedidasLadon.margen,
+                    end = MedidasLadon.margen,
+                    top = MedidasLadon.margen,
+                    bottom = MedidasLadon.margen + barraDeNavegacion,
+                ),
             horizontalArrangement = Arrangement.spacedBy(MedidasLadon.hueco),
             verticalArrangement = Arrangement.spacedBy(MedidasLadon.hueco),
         ) {

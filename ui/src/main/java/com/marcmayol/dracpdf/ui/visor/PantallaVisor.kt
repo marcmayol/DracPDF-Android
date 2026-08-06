@@ -4,9 +4,14 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -35,10 +41,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -55,6 +66,7 @@ import com.marcmayol.dracpdf.ui.firmas.HojaFirmas
 import com.marcmayol.dracpdf.ui.tema.ColoresPapel
 import com.marcmayol.dracpdf.ui.tema.MedidasLadon
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
 import kotlin.math.abs
 
 /**
@@ -72,6 +84,7 @@ fun PantallaVisor(
     modifier: Modifier = Modifier,
     documentosAbiertos: Int = 1,
     alAbrirDocumentos: () -> Unit = {},
+    alAbrirOtro: () -> Unit = {},
     firmas: FirmasViewModel? = null,
 ) {
     val estado by modelo.estado.collectAsState()
@@ -126,11 +139,13 @@ fun PantallaVisor(
                 .imePadding(),
     ) {
         AnimatedVisibility(visible = estado.chromeVisible, enter = fadeIn(), exit = fadeOut()) {
-            BarraSuperiorVisor(
-                nombre = estado.nombre,
+            BarraDeArriba(
+                estado = estado,
+                modelo = modelo,
                 alSalir = alSalir,
                 documentosAbiertos = documentosAbiertos,
                 alAbrirDocumentos = alAbrirDocumentos,
+                alAbrirOtro = alAbrirOtro,
             )
         }
 
@@ -155,11 +170,19 @@ fun PantallaVisor(
                 alArrastrarFirma = modelo::moverColocacion,
                 alRedimensionarFirma = modelo::redimensionarColocacion,
                 alTocar = modelo::alternarChrome,
+                // Los dos gestos de zoom devuelven cuánto ha crecido de verdad la
+                // página —el factor pedido, ya recortado contra los topes—, porque es lo
+                // que necesita la lista para dejar quieto el punto que se está mirando.
                 alDobleTocar = {
+                    val anterior = zoomVivo
                     modelo.fijarZoom(if (estado.zoom > AJUSTE_ANCHO) AJUSTE_ANCHO else CIEN_POR_CIEN)
+                    zoomVivo = modelo.estado.value.zoom
+                    zoomVivo / anterior
                 },
                 alPellizcar = { factor ->
-                    zoomVivo = (zoomVivo * factor).coerceIn(VisorViewModel.ZOOM_MINIMO, VisorViewModel.ZOOM_MAXIMO)
+                    val anterior = zoomVivo
+                    zoomVivo = (anterior * factor).coerceIn(VisorViewModel.ZOOM_MINIMO, VisorViewModel.ZOOM_MAXIMO)
+                    zoomVivo / anterior
                 },
             )
 
@@ -176,8 +199,6 @@ fun PantallaVisor(
                 modo = estado.modo,
                 alAbrirIndice = { indiceAbierto = true },
                 alEntrarEnFormulario = modelo::entrarEnFormulario,
-                alSalirDelFormulario = modelo::salirDelFormulario,
-                alGuardar = modelo::guardar,
                 alCampoAnterior = { modelo.irACampo(Direccion.ANTERIOR) },
                 alCampoSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
                 alConfirmarColocacion = modelo::confirmarColocacion,
@@ -255,6 +276,46 @@ fun PantallaVisor(
 }
 
 /**
+ * La barra superior que toca: la del documento, o la del modo que esté en pie.
+ *
+ * **Una y sólo una.** El diseño no deja que convivan, y por eso se deciden en un solo
+ * sitio en vez de que cada modo añada la suya encima de la anterior.
+ */
+@Composable
+private fun BarraDeArriba(
+    estado: EstadoVisor,
+    modelo: VisorViewModel,
+    alSalir: () -> Unit,
+    documentosAbiertos: Int,
+    alAbrirDocumentos: () -> Unit,
+    alAbrirOtro: () -> Unit,
+) {
+    when (estado.modo) {
+        ModoVisor.Formulario ->
+            BarraSuperiorDelModo(
+                titulo = "Formulario",
+                accion = if (estado.guardando) "Guardando…" else "Guardar",
+                alCerrar = modelo::salirDelFormulario,
+                alAccionar = modelo::guardar,
+                // Sin cambios no hay nada que guardar, y guardar dos veces lo mismo
+                // dejaría una revisión vacía en el fichero.
+                accionHabilitada = estado.cambiosSinGuardar && !estado.guardando,
+            )
+
+        // La colocación de una firma conserva la barra del documento mientras se
+        // decide dónde va: sus dos controles viven abajo, junto al pulgar que arrastra.
+        ModoVisor.Lectura, ModoVisor.ColocarFirma ->
+            BarraSuperiorVisor(
+                nombre = estado.nombre,
+                alSalir = alSalir,
+                documentosAbiertos = documentosAbiertos,
+                alAbrirDocumentos = alAbrirDocumentos,
+                alAbrirOtro = alAbrirOtro,
+            )
+    }
+}
+
+/**
  * Qué hace un toque en un campo, según de qué campo se trate: una casilla cambia
  * sola, una elección abre su lista, y un texto se queda esperando teclas.
  */
@@ -326,28 +387,61 @@ private fun ListaDePaginas(
     alArrastrarFirma: (Float, Float) -> Unit,
     alRedimensionarFirma: (Float) -> Unit,
     alTocar: () -> Unit,
-    alDobleTocar: () -> Unit,
-    alPellizcar: (Float) -> Unit,
+    alDobleTocar: () -> Float,
+    alPellizcar: (Float) -> Float,
 ) {
     val scrollHorizontal = rememberScrollState()
+    val ajustePendiente = remember { mutableStateOf(Offset.Zero) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val anchoPagina: Dp = maxWidth * zoomVivo
+
+        AplicarElAnclaje(pendiente = ajustePendiente, lista = lista, scrollHorizontal = scrollHorizontal)
 
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
+                    // Los gestos van por fuera del scroll horizontal a propósito: así
+                    // reciben las coordenadas de la pantalla y no las del contenido ya
+                    // desplazado, que es lo que hace falta para anclar el zoom.
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { alTocar() },
+                            onDoubleTap = { donde ->
+                                ajustePendiente.value += anclaje(donde, alDobleTocar(), lista, scrollHorizontal)
+                            },
+                        )
+                    }.pointerInput(Unit) {
+                        // El pellizco es de dos dedos y sólo entonces se queda el gesto.
+                        // Con `detectTransformGestures` el arrastre de un dedo también
+                        // se consumía aquí, y la página ampliada no se podía mover: se
+                        // veía el zoom y no había manera de llegar al margen derecho.
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                            var evento: PointerEvent
+                            do {
+                                evento = awaitPointerEvent(PointerEventPass.Initial)
+                                if (evento.changes.count { it.pressed } >= 2) {
+                                    val factor = evento.calculateZoom()
+                                    if (factor != 1f) {
+                                        val centro = evento.calculateCentroid(useCurrent = true)
+                                        val real = alPellizcar(factor)
+                                        if (centro.isSpecified) {
+                                            ajustePendiente.value += anclaje(centro, real, lista, scrollHorizontal)
+                                        }
+                                    }
+                                    // Con dos dedos el gesto es nuestro: si no se
+                                    // consume, la lista lee el movimiento como scroll y
+                                    // el documento se va solo mientras se amplía.
+                                    evento.changes.forEach { it.consume() }
+                                }
+                            } while (evento.changes.any { it.pressed })
+                        }
+                    }
                     // Con zoom la página es más ancha que la pantalla, así que la
                     // columna entera se desplaza en horizontal.
-                    .then(if (zoomVivo > 1f) Modifier.horizontalScroll(scrollHorizontal) else Modifier)
-                    .pointerInput(Unit) {
-                        detectTapGestures(onTap = { alTocar() }, onDoubleTap = { alDobleTocar() })
-                    }.pointerInput(Unit) {
-                        detectTransformGestures { _, _, factor, _ ->
-                            if (factor != 1f) alPellizcar(factor)
-                        }
-                    },
+                    .then(if (zoomVivo > 1f) Modifier.horizontalScroll(scrollHorizontal) else Modifier),
         ) {
             LazyColumn(
                 state = lista,
@@ -400,6 +494,64 @@ private fun ListaDePaginas(
                 }
             }
         }
+    }
+}
+
+/**
+ * Cuánto hay que desplazar la vista para que el punto que se está ampliando se quede
+ * donde estaba.
+ *
+ * Sin esto el zoom crece desde la esquina de arriba a la izquierda y lo que se estaba
+ * mirando se escapa de la pantalla, que es el defecto clásico del zoom en un visor.
+ * Se calcula **antes** de que la página se vuelva a medir, con la posición que el
+ * contenido tiene todavía.
+ */
+private fun anclaje(
+    centro: Offset,
+    factorReal: Float,
+    lista: LazyListState,
+    scrollHorizontal: ScrollState,
+): Offset {
+    if (!factorReal.isFinite() || factorReal == 1f) return Offset.Zero
+
+    val crecimiento = factorReal - 1f
+    val visibles = lista.layoutInfo.visibleItemsInfo
+    // La página bajo el dedo, y si el dedo cae en un hueco, la primera visible: el
+    // desplazamiento se mide desde el borde de esa página, no desde el principio del
+    // documento, que con 500 páginas ni se conoce ni haría falta.
+    val pagina =
+        visibles.firstOrNull { centro.y >= it.offset && centro.y < it.offset + it.size }
+            ?: visibles.firstOrNull()
+
+    return Offset(
+        x = (scrollHorizontal.value + centro.x) * crecimiento,
+        y = if (pagina == null) 0f else (centro.y - pagina.offset) * crecimiento,
+    )
+}
+
+/**
+ * Aplica el anclaje acumulado, un frame después de pedirlo.
+ *
+ * La espera no es un apaño: en el momento del gesto la página todavía mide lo que
+ * medía, y desplazarse ahí se recortaría contra el ancho viejo —la vista se pegaría al
+ * margen izquierdo—. Los ajustes se suman mientras tanto, así que un pellizco largo no
+ * pierde ninguno por el camino.
+ */
+@Composable
+private fun AplicarElAnclaje(
+    pendiente: MutableState<Offset>,
+    lista: LazyListState,
+    scrollHorizontal: ScrollState,
+) {
+    LaunchedEffect(lista, scrollHorizontal) {
+        snapshotFlow { pendiente.value }
+            .filter { it != Offset.Zero }
+            .collect { ajuste ->
+                pendiente.value = Offset.Zero
+                withFrameNanos { }
+                if (ajuste.y != 0f) lista.scrollBy(ajuste.y)
+                if (ajuste.x != 0f) scrollHorizontal.scrollBy(ajuste.x)
+            }
     }
 }
 

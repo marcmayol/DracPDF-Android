@@ -9,4 +9,16 @@ enum class PreferenciaTema {
     CLARO,
     OSCURO,
     SISTEMA,
+    ;
+
+    companion object {
+        /**
+         * La preferencia que hay guardada bajo ese nombre.
+         *
+         * Lo que no se reconoce —no hay nada guardado todavía, o el valor viene de una
+         * versión que ya no existe— se lee como [SISTEMA]: obedecer al teléfono es el
+         * único comportamiento que nunca sorprende a quien abre la aplicación.
+         */
+        fun de(guardado: String?): PreferenciaTema = entries.firstOrNull { it.name == guardado } ?: SISTEMA
+    }
 }

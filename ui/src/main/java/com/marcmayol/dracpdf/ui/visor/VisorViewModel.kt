@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
@@ -172,6 +174,9 @@ class VisorViewModel(
 
     /** Las miniaturas ya dibujadas, por número de página. */
     val miniaturas: StateFlow<Map<Int, ImageBitmap>> = _miniaturas.asStateFlow()
+
+    /** Serializa los saltos entre campos: uno detrás de otro, nunca dos a la vez. */
+    private val navegacion = Mutex()
 
     private val _campos = MutableStateFlow<Map<Int, List<CampoFormulario>>>(emptyMap())
 
@@ -468,23 +473,31 @@ class VisorViewModel(
      * documento.
      */
     fun irACampo(direccion: Direccion) {
-        val estado = _estado.value
-        val id = estado.id ?: return
-        if (estado.modo != ModoVisor.Formulario) return
-
         viewModelScope.launch {
-            val destino = enElMotor { buscarCampo(id, estado, direccion) } ?: return@launch
-            if (destino.pagina !in _campos.value) {
-                val delaPagina = enElMotor { casos.listarCampos(id, destino.pagina) } ?: return@launch
-                _campos.value = _campos.value + (destino.pagina to delaPagina)
+            // El estado se lee **dentro** y bajo llave, y no al entrar en la función.
+            // Leerlo fuera dejaba una carrera de verdad: dos toques seguidos en
+            // «siguiente» —que en un formulario largo es lo normal— leían los dos el
+            // mismo campo activo, buscaban los dos el mismo vecino y el segundo toque
+            // se perdía. Serializar las navegaciones también las ordena: cada salto
+            // parte de donde dejó el anterior.
+            navegacion.withLock {
+                val estado = _estado.value
+                val id = estado.id ?: return@withLock
+                if (estado.modo != ModoVisor.Formulario) return@withLock
+
+                val destino = enElMotor { buscarCampo(id, estado, direccion) } ?: return@withLock
+                if (destino.pagina !in _campos.value) {
+                    val delaPagina = enElMotor { casos.listarCampos(id, destino.pagina) } ?: return@withLock
+                    _campos.value = _campos.value + (destino.pagina to delaPagina)
+                }
+                _estado.value =
+                    conNavegacion(_estado.value.copy(campoActivo = destino.id, paginaActual = destino.pagina))
+                registro.anotarPagina(id, destino.pagina)
+                // Que el campo esté enfocado y debajo del teclado es el fallo clásico de
+                // los formularios en el móvil: se pide llevarlo a la vista, siempre.
+                _desplazarA.value =
+                    DesplazamientoACampo(destino.pagina, destino.marco.y0 / (tamanoDe(destino.pagina)?.alto ?: 1f))
             }
-            _estado.value =
-                conNavegacion(_estado.value.copy(campoActivo = destino.id, paginaActual = destino.pagina))
-            registro.anotarPagina(id, destino.pagina)
-            // Que el campo esté enfocado y debajo del teclado es el fallo clásico de
-            // los formularios en el móvil: se pide llevarlo a la vista, siempre.
-            _desplazarA.value =
-                DesplazamientoACampo(destino.pagina, destino.marco.y0 / (tamanoDe(destino.pagina)?.alto ?: 1f))
         }
     }
 

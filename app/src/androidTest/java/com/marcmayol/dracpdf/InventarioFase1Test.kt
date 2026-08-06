@@ -3,7 +3,7 @@ package com.marcmayol.dracpdf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -74,12 +74,15 @@ class InventarioFase1Test {
     private val inicio =
         listOf(
             Accion(TAG_ABRIR, "Abrir PDF", "selector del sistema (OPEN_DOCUMENT)", "siempre"),
-            Accion(TAG_MENU_INICIO, "⋮", "menú de inicio", "contenido pedido al diseño", habilitada = false),
+            // Dejó de estar apagado en la Fase 5: ya despliega el menú del diseño, con
+            // «Tema» viva y «Ajustes» esperando su fase.
+            Accion(TAG_MENU_INICIO, "⋮", "menú de inicio (Tema · Ajustes)", "siempre"),
         )
 
     @Test
     fun inventario_de_la_pantalla_de_inicio() {
         composicion.setContent { TemaDracPDF { PantallaInicio(alAbrirPdf = {}) } }
+        composicion.waitForIdle()
 
         inicio.forEach { accion ->
             composicion.onNodeWithTag(accion.tag).assertExisteCon(accion)
@@ -94,7 +97,9 @@ class InventarioFase1Test {
         listOf(
             Accion(TAG_ATRAS, "Atrás", "cierra el documento y vuelve a inicio", "siempre"),
             Accion(TAG_BUSCAR, "Buscar", "Fase 7", "deshabilitada en la Fase 1", habilitada = false),
-            Accion(TAG_MENU, "Documentos abiertos", "hoja de documentos abiertos", "siempre"),
+            // El cuarto sitio de la barra es el ⋮, no un botón suelto: «documentos
+            // abiertos» pasó dentro del menú en la revisión de conformidad de la Fase 5.
+            Accion(TAG_MENU, "⋮", "menú de acciones del documento", "siempre"),
             Accion(TAG_DESTINO_INDICE, "Índice", "hoja de índice y miniaturas", "siempre"),
             Accion(
                 TAG_DESTINO_FORMULARIO,
@@ -189,6 +194,7 @@ class InventarioFase1Test {
                 )
             }
         }
+        composicion.waitForIdle()
 
         hojaContrasena.forEach { accion ->
             composicion.onNodeWithTag(accion.tag).assertExisteCon(accion)

@@ -2,7 +2,7 @@ package com.marcmayol.dracpdf
 
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
@@ -17,8 +17,8 @@ import com.marcmayol.dracpdf.ui.tema.TemaDracPDF
 import com.marcmayol.dracpdf.ui.visor.CachePaginas
 import com.marcmayol.dracpdf.ui.visor.PantallaVisor
 import com.marcmayol.dracpdf.ui.visor.TAG_DESTINO_FORMULARIO
-import com.marcmayol.dracpdf.ui.visor.TAG_FORM_GUARDAR
 import com.marcmayol.dracpdf.ui.visor.TAG_HOJA_OPCIONES
+import com.marcmayol.dracpdf.ui.visor.TAG_MODO_ACCION
 import com.marcmayol.dracpdf.ui.visor.VisorViewModel
 import com.marcmayol.dracpdf.ui.visor.tagCampo
 import com.marcmayol.dracpdf.ui.visor.tagEditor
@@ -186,15 +186,15 @@ class RellenarYGuardarTest {
         val montaje = enFormulario("ui_guardar.pdf")
         val tamanoAntes = montaje.fichero.length()
 
-        composicion.onNodeWithTag(TAG_FORM_GUARDAR).assertIsNotEnabled()
+        composicion.onNodeWithTag(TAG_MODO_ACCION).assertIsNotEnabled()
 
         val casilla = campo(montaje, GeneradorFormularios.CAMPO_ACEPTA)
         composicion.onNodeWithTag(tagCampo(casilla.id)).performClick()
         composicion.waitUntil(ESPERA_MS) { montaje.modelo.estado.value.cambiosSinGuardar }
         composicion.waitForIdle()
 
-        composicion.onNodeWithTag(TAG_FORM_GUARDAR).assertIsEnabled()
-        composicion.onNodeWithTag(TAG_FORM_GUARDAR).performClick()
+        composicion.onNodeWithTag(TAG_MODO_ACCION).assertIsEnabled()
+        composicion.onNodeWithTag(TAG_MODO_ACCION).performClick()
         composicion.waitUntil(ESPERA_MS) { !montaje.modelo.estado.value.cambiosSinGuardar }
         composicion.waitForIdle()
 
@@ -204,7 +204,7 @@ class RellenarYGuardarTest {
         )
         // Sin cambios pendientes, guardar deja de ofrecerse: repetirlo sólo dejaría
         // una revisión vacía en el fichero.
-        composicion.onNodeWithTag(TAG_FORM_GUARDAR).assertIsNotEnabled()
+        composicion.onNodeWithTag(TAG_MODO_ACCION).assertIsNotEnabled()
     }
 
     @Test

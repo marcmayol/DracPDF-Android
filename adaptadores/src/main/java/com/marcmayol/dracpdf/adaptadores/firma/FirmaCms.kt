@@ -75,7 +75,14 @@ internal class FirmaCms(
             // El almacén de certificados es genérico y hay que decirle qué tipo se
             // espera: el SignerId identifica al firmante por emisor y número de serie.
             val almacen: Store<X509CertificateHolder> = datos.certificates
-            val titular = almacen.getMatches(firmante.sid as Selector<X509CertificateHolder>).firstOrNull()
+            // El cast es seguro y no se puede evitar: `SignerId` implementa el
+            // `Selector` de Bouncy Castle **sin genéricos**, y el almacén del que sale
+            // este CMS sólo contiene certificados. Se silencia aquí, en una línea, en
+            // vez de dejar el aviso suelto en cada compilación.
+            val selector =
+                @Suppress("UNCHECKED_CAST")
+                (firmante.sid as Selector<X509CertificateHolder>)
+            val titular = almacen.getMatches(selector).firstOrNull()
             if (titular == null) null else JcaX509CertificateConverter().getCertificate(titular)
         }.getOrNull()
 

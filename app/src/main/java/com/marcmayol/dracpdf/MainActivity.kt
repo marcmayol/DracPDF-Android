@@ -8,10 +8,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,7 +40,9 @@ import com.marcmayol.dracpdf.ui.documentos.HojaDocumentos
 import com.marcmayol.dracpdf.ui.firmas.FirmasViewModel
 import com.marcmayol.dracpdf.ui.inicio.HojaContrasena
 import com.marcmayol.dracpdf.ui.inicio.PantallaInicio
+import com.marcmayol.dracpdf.ui.tema.HojaTema
 import com.marcmayol.dracpdf.ui.tema.TemaDracPDF
+import com.marcmayol.dracpdf.ui.tema.TemaViewModel
 import com.marcmayol.dracpdf.ui.visor.PantallaVisor
 import com.marcmayol.dracpdf.ui.visor.VisorViewModel
 
@@ -59,13 +61,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            TemaDracPDF {
+            val temaModelo: TemaViewModel = viewModel(factory = fabricaDe(grafo))
+            val preferencia by temaModelo.preferencia.collectAsStateWithLifecycle()
+
+            TemaDracPDF(preferencia = preferencia) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     AplicacionDracPDFUi(
                         grafo = grafo,
+                        tema = temaModelo,
                         // Sólo en la primera creación: al girar la pantalla el intent
                         // sigue ahí, y sin esto el documento se reabriría desde cero
                         // perdiendo la página por la que iba.
@@ -99,10 +105,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AplicacionDracPDFUi(
     grafo: Grafo,
+    tema: TemaViewModel,
     intentInicial: Intent?,
 ) {
     val contexto = LocalContext.current
     val resolver = remember { contexto.contentResolver }
+    val preferenciaTema by tema.preferencia.collectAsStateWithLifecycle()
+    var temaAbierto by remember { mutableStateOf(false) }
 
     val appModelo: AppViewModel = viewModel(factory = fabricaDe(grafo))
     val visorModelo: VisorViewModel = viewModel(factory = fabricaDe(grafo))
@@ -134,11 +143,19 @@ private fun AplicacionDracPDFUi(
         }
     }
 
+    if (temaAbierto) {
+        HojaTema(
+            elegida = preferenciaTema,
+            alElegir = tema::elegir,
+            alCerrar = { temaAbierto = false },
+        )
+    }
+
     when (val actual = estado) {
         is EstadoApp.Inicio ->
             PantallaInicio(
                 alAbrirPdf = { selector.launch(arrayOf(TIPO_PDF)) },
-                temaOscuro = isSystemInDarkTheme(),
+                alAbrirTema = { temaAbierto = true },
                 abiertos =
                     abiertos.map {
                         it.aDocumentoEnLista(
@@ -153,7 +170,7 @@ private fun AplicacionDracPDFUi(
         is EstadoApp.PidiendoContrasena -> {
             PantallaInicio(
                 alAbrirPdf = { selector.launch(arrayOf(TIPO_PDF)) },
-                temaOscuro = isSystemInDarkTheme(),
+                alAbrirTema = { temaAbierto = true },
             )
             HojaContrasena(
                 nombreDocumento = nombreDe(actual.origen),
@@ -170,6 +187,7 @@ private fun AplicacionDracPDFUi(
                 alSalir = appModelo::volverAlInicio,
                 documentosAbiertos = abiertos.size,
                 alAbrirDocumentos = { documentosAbiertosVisible = true },
+                alAbrirOtro = { selector.launch(arrayOf(TIPO_PDF)) },
                 firmas = firmasModelo,
             )
 
@@ -198,7 +216,14 @@ private fun AplicacionDracPDFUi(
 
         is EstadoApp.NoSePudoAbrir ->
             Box(
-                modifier = Modifier.fillMaxSize().padding(32.dp).testTag(TAG_ERROR_APERTURA),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        // No tiene barras propias que aparten el contenido, así que se
+                        // aparta de todas de una vez.
+                        .safeDrawingPadding()
+                        .padding(32.dp)
+                        .testTag(TAG_ERROR_APERTURA),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -251,6 +276,9 @@ private fun fabricaDe(grafo: Grafo) =
 
                 clase.isAssignableFrom(FirmasViewModel::class.java) ->
                     FirmasViewModel(grafo.almacenFirmas) as T
+
+                clase.isAssignableFrom(TemaViewModel::class.java) ->
+                    TemaViewModel(grafo.ajustesDeInterfaz, grafo.temaInicial) as T
 
                 clase.isAssignableFrom(VisorViewModel::class.java) ->
                     VisorViewModel(

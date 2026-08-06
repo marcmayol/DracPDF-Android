@@ -2,7 +2,7 @@ package com.marcmayol.dracpdf
 
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
@@ -79,6 +79,12 @@ class FocoYTecladoTest {
         composicion.waitUntil(ESPERA_MS) { modelo.estado.value.hayFormulario }
         composicion.onNodeWithTag(TAG_DESTINO_FORMULARIO).performClick()
         composicion.waitUntil(ESPERA_MS) { modelo.campos.value.containsKey(0) }
+        // Y al índice de páginas con campos, no sólo a la primera página. «Siguiente»
+        // navega sobre ese índice: pulsarlo antes de tenerlo hecho no lleva a ningún
+        // campo y la espera del test se agota. Con la máquina descansada el índice
+        // llegaba a tiempo por los pelos, y por eso esto sólo fallaba en la tanda
+        // larga.
+        composicion.waitUntil(ESPERA_MS) { modelo.estado.value.indiceCompleto }
         composicion.waitForIdle()
         return modelo
     }
@@ -200,6 +206,11 @@ class FocoYTecladoTest {
         esperarActivo(modelo, destino)
         composicion.waitForIdle()
         composicion.onNodeWithTag(tagEditor(destino.id)).performTextReplacement("A medio escribir")
+        // Antes de desmontar hay que dejar que el texto llegue al editor. Sin esta
+        // espera se desmonta mientras el evento va de camino, el borrador se vuelca
+        // vacío y lo que el test acaba comprobando es una carrera suya, no la de la
+        // aplicación.
+        composicion.waitForIdle()
 
         // Salir del modo desmonta el overlay entero, igual que hace una rotación.
         modelo.salirDelFormulario()
