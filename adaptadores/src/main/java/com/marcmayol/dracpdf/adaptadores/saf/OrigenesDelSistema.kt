@@ -3,6 +3,7 @@ package com.marcmayol.dracpdf.adaptadores.saf
 import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
 
@@ -18,6 +19,22 @@ object OrigenesDelSistema {
         resolver: ContentResolver,
         uri: Uri,
     ): OrigenDocumento = OrigenDocumento.Externo(uri.toString(), nombreDe(resolver, uri))
+
+    /**
+     * La carpeta que devuelve el selector de árboles, lista para escribir dentro.
+     *
+     * El URI que entrega `OPEN_DOCUMENT_TREE` es un árbol, y crear ficheros dentro de
+     * un árbol no funciona con el árbol: hace falta el documento que representa a esa
+     * carpeta. Son dos URI distintos del mismo sitio, y confundirlos da un
+     * `IllegalArgumentException` en la primera imagen que se intente escribir.
+     */
+    fun carpetaDe(
+        resolver: ContentResolver,
+        arbol: Uri,
+    ): OrigenDocumento {
+        val carpeta = DocumentsContract.buildDocumentUriUsingTree(arbol, DocumentsContract.getTreeDocumentId(arbol))
+        return OrigenDocumento.Externo(carpeta.toString(), nombreDe(resolver, carpeta))
+    }
 
     /**
      * El documento que trae un intent, si lo trae: `VIEW` de otra aplicación (el

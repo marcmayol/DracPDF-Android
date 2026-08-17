@@ -1,6 +1,8 @@
 package com.marcmayol.dracpdf.ui.herramientas
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
@@ -19,6 +21,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.marcmayol.dracpdf.ui.componentes.ChipLadon
 
 /**
  * Los rangos que se escriben al dividir: «1-3, 7, 10-12».
@@ -107,21 +110,32 @@ fun DialogoDividir(
  * Pide la contraseña para proteger o para quitar la protección.
  *
  * Es el mismo diálogo para las dos cosas porque para el usuario es la misma
- * herramienta —«Proteger»— y lo único que cambia es en qué dirección va.
+ * herramienta —«Proteger»— y lo único que cambia es en qué dirección va. La dirección
+ * se elige aquí dentro y no antes de abrirlo: separarlas en dos entradas de la rejilla
+ * obligaría a saber, antes de tocar nada, si el documento lleva contraseña o no.
+ *
+ * @param quitandoAlEmpezar en qué dirección se abre. Un documento que se ha abierto
+ *   escribiendo una contraseña se abre directamente en «quitar», que es lo que se va a
+ *   querer hacer casi siempre.
  */
 @Composable
 fun DialogoContrasena(
-    quitando: Boolean,
-    alAceptar: (String) -> Unit,
+    quitandoAlEmpezar: Boolean,
+    alAceptar: (String, Boolean) -> Unit,
     alCancelar: () -> Unit,
 ) {
     var contrasena by remember { mutableStateOf("") }
+    var quitando by remember { mutableStateOf(quitandoAlEmpezar) }
 
     AlertDialog(
         onDismissRequest = alCancelar,
         title = { Text(if (quitando) "Quitar la contraseña" else "Proteger con contraseña") },
         text = {
             Column {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChipLadon("Poner", elegido = !quitando, alPulsar = { quitando = false }, tag = TAG_CLAVE_PONER)
+                    ChipLadon("Quitar", elegido = quitando, alPulsar = { quitando = true }, tag = TAG_CLAVE_QUITAR)
+                }
                 Text(
                     text =
                         if (quitando) {
@@ -130,6 +144,7 @@ fun DialogoContrasena(
                             "Quien abra la copia tendrá que escribirla. Si la pierdes, no se puede recuperar."
                         },
                     style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp),
                 )
                 OutlinedTextField(
                     value = contrasena,
@@ -143,7 +158,7 @@ fun DialogoContrasena(
         },
         confirmButton = {
             TextButton(
-                onClick = { alAceptar(contrasena) },
+                onClick = { alAceptar(contrasena, quitando) },
                 // En blanco no protege nada, así que no se deja confirmar.
                 enabled = contrasena.isNotBlank(),
                 modifier = Modifier.testTag(TAG_ACEPTAR_CLAVE),
@@ -214,6 +229,8 @@ const val TAG_ACEPTAR_RANGOS = "dividir_aceptar"
 const val TAG_DIALOGO_CLAVE = "dialogo_contrasena"
 const val TAG_CAMPO_CLAVE = "contrasena_campo"
 const val TAG_ACEPTAR_CLAVE = "contrasena_aceptar"
+const val TAG_CLAVE_PONER = "contrasena_poner"
+const val TAG_CLAVE_QUITAR = "contrasena_quitar"
 
 const val TAG_DIALOGO_AVISOS = "dialogo_avisos"
 const val TAG_AVISOS_SEGUIR = "avisos_seguir"

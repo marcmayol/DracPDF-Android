@@ -6,15 +6,32 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.marcmayol.dracpdf.adaptadores.fixtures.GeneradorFixtures
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
+import com.marcmayol.dracpdf.dominio.puertos.FormatoImagen
+import com.marcmayol.dracpdf.ui.herramientas.DialogoContrasena
+import com.marcmayol.dracpdf.ui.herramientas.DialogoConvertir
 import com.marcmayol.dracpdf.ui.herramientas.Herramienta
 import com.marcmayol.dracpdf.ui.herramientas.HojaHerramientas
+import com.marcmayol.dracpdf.ui.herramientas.HojaOrganizar
+import com.marcmayol.dracpdf.ui.herramientas.TAG_ACEPTAR_CLAVE
 import com.marcmayol.dracpdf.ui.herramientas.TAG_AVISO_FIRMADO
+import com.marcmayol.dracpdf.ui.herramientas.TAG_CAMPO_CLAVE
+import com.marcmayol.dracpdf.ui.herramientas.TAG_CLAVE_PONER
+import com.marcmayol.dracpdf.ui.herramientas.TAG_CLAVE_QUITAR
+import com.marcmayol.dracpdf.ui.herramientas.TAG_CONVERTIR_IMAGENES
+import com.marcmayol.dracpdf.ui.herramientas.TAG_CONVERTIR_PAGINAS
+import com.marcmayol.dracpdf.ui.herramientas.TAG_CONVERTIR_TEXTO
+import com.marcmayol.dracpdf.ui.herramientas.TAG_DIALOGO_CONVERTIR
 import com.marcmayol.dracpdf.ui.herramientas.TAG_HOJA_HERRAMIENTAS
+import com.marcmayol.dracpdf.ui.herramientas.TAG_HOJA_ORGANIZAR
+import com.marcmayol.dracpdf.ui.herramientas.TAG_ORGANIZAR_GUARDAR
 import com.marcmayol.dracpdf.ui.herramientas.disponible
+import com.marcmayol.dracpdf.ui.herramientas.tagFormato
+import com.marcmayol.dracpdf.ui.herramientas.tagPaginaOrganizar
 import com.marcmayol.dracpdf.ui.iconos.IconosLadon
 import com.marcmayol.dracpdf.ui.tema.TemaDracPDF
 import com.marcmayol.dracpdf.ui.visor.CachePaginas
@@ -114,6 +131,72 @@ class InventarioFase6Test {
         val prestados = setOf(IconosLadon.rotar, IconosLadon.guardar, IconosLadon.verificar)
         val coladas = Herramienta.entries.filter { it.icono in prestados }
         assertTrue("Siguen usándose iconos prestados en $coladas", coladas.isEmpty())
+    }
+
+    @Test
+    fun la_unica_entrada_de_conversion_lleva_dentro_los_dos_destinos() {
+        // Una entrada en la rejilla, dos destinos dentro: es lo contrario de partirla en
+        // «Exportar» y «Convertir», que es lo que el escritorio tuvo que deshacer.
+        composicion.setContent {
+            TemaDracPDF {
+                DialogoConvertir(paginas = 3, alElegirTexto = {}, alElegirImagenes = { _, _ -> }, alCancelar = {})
+            }
+        }
+        composicion.waitForIdle()
+
+        composicion.onNodeWithTag(TAG_DIALOGO_CONVERTIR).assertIsDisplayed()
+        composicion.onNodeWithTag(TAG_CONVERTIR_TEXTO).assertIsDisplayed()
+        composicion.onNodeWithTag(TAG_CONVERTIR_IMAGENES).assertIsDisplayed()
+
+        // Los ajustes de imagen sólo aparecen cuando se van a hacer imágenes: en texto
+        // no significan nada.
+        composicion.onNodeWithTag(TAG_CONVERTIR_PAGINAS).assertDoesNotExist()
+        composicion.onNodeWithTag(TAG_CONVERTIR_IMAGENES).performClick()
+        composicion.waitForIdle()
+        composicion.onNodeWithTag(TAG_CONVERTIR_PAGINAS).assertIsDisplayed()
+        composicion.onNodeWithTag(tagFormato(FormatoImagen.PNG)).assertIsDisplayed()
+    }
+
+    @Test
+    fun proteger_lleva_las_dos_direcciones_en_el_mismo_dialogo() {
+        var recogido: Pair<String, Boolean>? = null
+        composicion.setContent {
+            TemaDracPDF {
+                DialogoContrasena(
+                    quitandoAlEmpezar = false,
+                    alAceptar = { clave, quitando -> recogido = clave to quitando },
+                    alCancelar = {},
+                )
+            }
+        }
+        composicion.waitForIdle()
+
+        composicion.onNodeWithTag(TAG_CLAVE_PONER).assertIsDisplayed()
+        composicion.onNodeWithTag(TAG_CLAVE_QUITAR).performClick()
+        composicion.onNodeWithTag(TAG_CAMPO_CLAVE).performTextInput("abretesesamo")
+        composicion.onNodeWithTag(TAG_ACEPTAR_CLAVE).performClick()
+
+        assertEquals("abretesesamo" to true, recogido)
+    }
+
+    @Test
+    fun organizar_ensena_las_paginas_del_documento_para_moverlas() {
+        composicion.setContent {
+            TemaDracPDF {
+                HojaOrganizar(
+                    paginas = 3,
+                    miniaturas = emptyMap(),
+                    alPedirMiniatura = {},
+                    alGuardar = {},
+                    alCerrar = {},
+                )
+            }
+        }
+        composicion.waitForIdle()
+
+        composicion.onNodeWithTag(TAG_HOJA_ORGANIZAR).assertIsDisplayed()
+        composicion.onNodeWithTag(TAG_ORGANIZAR_GUARDAR).assertIsEnabled()
+        (0..2).forEach { composicion.onNodeWithTag(tagPaginaOrganizar(it)).assertIsDisplayed() }
     }
 
     @Test

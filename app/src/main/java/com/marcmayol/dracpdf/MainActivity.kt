@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
@@ -35,6 +36,8 @@ import com.marcmayol.dracpdf.adaptadores.saf.OrigenesDelSistema
 import com.marcmayol.dracpdf.dominio.casos.AvisosDeHerramienta
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
+import com.marcmayol.dracpdf.dominio.puertos.AjustesImagen
+import com.marcmayol.dracpdf.dominio.puertos.PaginaOrdenada
 import com.marcmayol.dracpdf.dominio.registro.EstadoDocumento
 import com.marcmayol.dracpdf.ui.documentos.DocumentoEnLista
 import com.marcmayol.dracpdf.ui.documentos.HojaDocumentos
@@ -42,10 +45,12 @@ import com.marcmayol.dracpdf.ui.firmas.FirmasViewModel
 import com.marcmayol.dracpdf.ui.herramientas.CasosDeHerramientas
 import com.marcmayol.dracpdf.ui.herramientas.DialogoAvisos
 import com.marcmayol.dracpdf.ui.herramientas.DialogoContrasena
+import com.marcmayol.dracpdf.ui.herramientas.DialogoConvertir
 import com.marcmayol.dracpdf.ui.herramientas.DialogoDividir
 import com.marcmayol.dracpdf.ui.herramientas.EstadoHerramienta
 import com.marcmayol.dracpdf.ui.herramientas.Herramienta
 import com.marcmayol.dracpdf.ui.herramientas.HerramientasViewModel
+import com.marcmayol.dracpdf.ui.herramientas.HojaOrganizar
 import com.marcmayol.dracpdf.ui.herramientas.HojaProgreso
 import com.marcmayol.dracpdf.ui.inicio.HojaContrasena
 import com.marcmayol.dracpdf.ui.inicio.PantallaInicio
@@ -129,6 +134,11 @@ private fun AplicacionDracPDFUi(
     val estado by appModelo.estado.collectAsStateWithLifecycle()
     val abiertos by appModelo.abiertos.collectAsStateWithLifecycle()
     val miniaturasDocs by appModelo.miniaturas.collectAsStateWithLifecycle()
+
+    // Las páginas del documento que se está viendo, en pequeño: las comparten la hoja
+    // de índice y la de organizar, y las dibuja el mismo modelo para no rasterizar dos
+    // veces lo mismo.
+    val miniaturasDelVisor by visorModelo.miniaturas.collectAsStateWithLifecycle()
     var documentosAbiertosVisible by remember { mutableStateOf(false) }
 
     val selector =
@@ -151,10 +161,8 @@ private fun AplicacionDracPDFUi(
      */
     var esperandoDestino by remember { mutableStateOf<Herramienta?>(null) }
 
-    /** Lo que cada flujo recoge antes de pedir el destino. */
-    var rangosPedidos by remember { mutableStateOf<List<IntRange>?>(null) }
-    var clavePedida by remember { mutableStateOf<String?>(null) }
-    var paraUnir by remember { mutableStateOf<List<OrigenDocumento>>(emptyList()) }
+    /** Lo que cada flujo va recogiendo antes de pedir el destino. */
+    var pedido by remember { mutableStateOf(LoPedido()) }
 
     /** Qué diálogo hay que enseñar ahora mismo, si hay alguno. */
     var preguntando by remember { mutableStateOf<Herramienta?>(null) }
@@ -165,22 +173,37 @@ private fun AplicacionDracPDFUi(
             alResolver = { herramienta, destino ->
                 esperandoDestino = null
                 val id = (estado as? EstadoApp.Viendo)?.id ?: return@recordarSelectorDeDestino
-                val origen = grafo.repositorio.origenDe(id)
                 ejecutarConDestino(
                     herramienta = herramienta,
                     modelo = herramientasModelo,
-                    origen = origen,
+                    origen = grafo.repositorio.origenDe(id),
                     destino = destino,
-                    pedido = LoPedido(rangos = rangosPedidos, clave = clavePedida, paraUnir = paraUnir),
+                    pedido = pedido,
                 )
             },
         )
 
+    // Las imágenes no van a un fichero sino a una carpeta: son una por página, y
+    // pedirlas de una en una sería insufrible en un documento de veinte.
+    val carpetaParaImagenes =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { arbol: Uri? ->
+            val id = (estado as? EstadoApp.Viendo)?.id
+            if (arbol != null && id != null) {
+                convertirEnLaCarpeta(
+                    modelo = herramientasModelo,
+                    origen = grafo.repositorio.origenDe(id),
+                    carpeta = OrigenesDelSistema.carpetaDe(resolver, arbol),
+                    pedido = pedido,
+                )
+            }
+        }
+
     val selectorParaUnir =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
             if (uris.size >= 2) {
-                paraUnir = uris.map { OrigenDocumento.Externo(it.toString(), nombreDeUri(it)) }
-                herramientasModelo.revisar(paraUnir)
+                val elegidos = uris.map { OrigenDocumento.Externo(it.toString(), nombreDeUri(it)) }
+                pedido = pedido.copy(paraUnir = elegidos)
+                herramientasModelo.revisar(elegidos)
             }
         }
 
@@ -197,35 +220,34 @@ private fun AplicacionDracPDFUi(
     }
 
     val documentoAbierto = (estado as? EstadoApp.Viendo)?.id
-    val nombreDelAbierto =
-        documentoAbierto
-            ?.let {
-                grafo.registro
-                    .estado(it)
-                    .documento.nombre
-            }.orEmpty()
+    val nombreDelAbierto = grafo.nombreDelDocumento(documentoAbierto)
+
+    val pedirDestino: (Herramienta) -> Unit = { herramienta ->
+        esperandoDestino = herramienta
+        destinoParaGuardar.launch(nombreSugerido(herramienta, nombreDelAbierto, pedido))
+    }
 
     FlujosDeHerramienta(
         preguntando = preguntando,
-        paginasDelAbierto =
-            documentoAbierto?.let {
-                grafo.registro
-                    .estado(it)
-                    .documento.paginas
-            } ?: 1,
+        abierto =
+            DatosDelAbierto(
+                paginas = grafo.paginasDelDocumento(documentoAbierto),
+                miniaturas = miniaturasDelVisor,
+                alPedirMiniatura = visorModelo::pedirMiniatura,
+            ),
         avisos = trabajo.avisos,
-        alDejarDePreguntar = { preguntando = null },
-        alPedirDestino = { herramienta ->
-            esperandoDestino = herramienta
-            destinoParaGuardar.launch(nombreSugerido(herramienta, nombreDelAbierto))
-        },
-        alFijarRangos = { rangosPedidos = it },
-        alFijarClave = { clavePedida = it },
-        alOlvidarAvisos = {
-            herramientasModelo.descartarResultado()
-            paraUnir = emptyList()
-        },
-        alSeguirTrasAvisos = herramientasModelo::descartarResultado,
+        acciones =
+            AccionesDeFlujo(
+                alDejarDePreguntar = { preguntando = null },
+                alPedirDestino = pedirDestino,
+                alPedirCarpeta = { carpetaParaImagenes.launch(null) },
+                alRecoger = { recogido -> pedido = recogido(pedido) },
+                alOlvidarAvisos = {
+                    herramientasModelo.descartarResultado()
+                    pedido = pedido.copy(paraUnir = emptyList())
+                },
+                alSeguirTrasAvisos = herramientasModelo::descartarResultado,
+            ),
     )
 
     HojasSueltas(
@@ -278,10 +300,7 @@ private fun AplicacionDracPDFUi(
                 alElegirHerramienta = { herramienta ->
                     arrancar(
                         herramienta = herramienta,
-                        alPedirDestino = {
-                            esperandoDestino = it
-                            destinoParaGuardar.launch(nombreSugerido(it, nombreDelAbierto))
-                        },
+                        alPedirDestino = pedirDestino,
                         alElegirVarios = { selectorParaUnir.launch(arrayOf(TIPO_PDF)) },
                         alPreguntar = { preguntando = it },
                     )
@@ -334,6 +353,28 @@ private fun AplicacionDracPDFUi(
     }
 }
 
+/**
+ * Cuántas páginas y cómo se llama el documento que hay delante.
+ *
+ * Con la aplicación en el inicio no hay ninguno, y entonces se contesta con lo que no
+ * estorba: una página y un nombre vacío. Los diálogos se construyen antes de saber si
+ * habrá documento, y un valor imposible aquí sería un fallo allí.
+ */
+private fun Grafo.paginasDelDocumento(id: IdDocumento?): Int =
+    id?.let {
+        registro
+            .estado(it)
+            .documento.paginas
+    } ?: 1
+
+private fun Grafo.nombreDelDocumento(id: IdDocumento?): String =
+    id
+        ?.let {
+            registro
+                .estado(it)
+                .documento.nombre
+        }.orEmpty()
+
 /** Traduce lo que sabe el registro a lo que necesita la lista de la interfaz. */
 private fun EstadoDocumento.aDocumentoEnLista(
     activo: Boolean,
@@ -374,14 +415,16 @@ private fun recordarSelectorDeDestino(
 private fun nombreSugerido(
     herramienta: Herramienta,
     nombreDelDocumento: String,
+    pedido: LoPedido,
 ): String {
     val base = nombreDelDocumento.substringBeforeLast('.', nombreDelDocumento)
     return when (herramienta) {
         Herramienta.COMPRIMIR -> "$base-comprimido.pdf"
         Herramienta.CONVERTIR -> "$base.txt"
-        Herramienta.PROTEGER -> "$base-protegido.pdf"
+        Herramienta.PROTEGER -> if (pedido.quitando) "$base-sin-contrasena.pdf" else "$base-protegido.pdf"
         Herramienta.DIVIDIR -> "$base-parte1.pdf"
         Herramienta.UNIR -> "documentos-unidos.pdf"
+        Herramienta.ORGANIZAR -> "$base-organizado.pdf"
         else -> "$base.pdf"
     }
 }
@@ -425,9 +468,11 @@ private fun arrancar(
     alPreguntar: (Herramienta) -> Unit,
 ) {
     when (herramienta) {
-        Herramienta.COMPRIMIR, Herramienta.CONVERTIR -> alPedirDestino(herramienta)
+        Herramienta.COMPRIMIR -> alPedirDestino(herramienta)
         Herramienta.UNIR -> alElegirVarios()
-        Herramienta.DIVIDIR, Herramienta.PROTEGER -> alPreguntar(herramienta)
+        Herramienta.DIVIDIR, Herramienta.PROTEGER, Herramienta.CONVERTIR, Herramienta.ORGANIZAR ->
+            alPreguntar(herramienta)
+
         else -> Unit
     }
 }
@@ -449,8 +494,19 @@ private fun ejecutarConDestino(
     when (herramienta) {
         Herramienta.COMPRIMIR -> modelo.comprimir(origen, destino)
         Herramienta.CONVERTIR -> modelo.convertirATexto(origen, destino)
-        Herramienta.PROTEGER -> pedido.clave?.let { modelo.proteger(origen, destino, it) }
+        // La misma herramienta en las dos direcciones: lo que cambia es lo que el
+        // usuario eligió en el diálogo, no la entrada de la rejilla.
+        Herramienta.PROTEGER ->
+            pedido.clave?.let { clave ->
+                if (pedido.quitando) {
+                    modelo.desproteger(origen, destino, clave)
+                } else {
+                    modelo.proteger(origen, destino, clave)
+                }
+            }
+
         Herramienta.UNIR -> modelo.unir(pedido.paraUnir, destino)
+        Herramienta.ORGANIZAR -> pedido.orden?.let { modelo.organizar(origen, it, destino) }
         // Dividir escribe varios ficheros y el sistema sólo da uno por ronda: el resto
         // se numeran a partir del elegido.
         Herramienta.DIVIDIR ->
@@ -461,15 +517,39 @@ private fun ejecutarConDestino(
 }
 
 /**
+ * Escribe las imágenes en la carpeta elegida.
+ *
+ * Vive fuera de la pantalla porque es la vuelta de un selector del sistema, igual que
+ * el de guardar: cuando el usuario regresa hay que recomponer qué se había pedido, y
+ * si falta algo no se hace nada en vez de inventárselo.
+ */
+private fun convertirEnLaCarpeta(
+    modelo: HerramientasViewModel,
+    origen: OrigenDocumento,
+    carpeta: OrigenDocumento,
+    pedido: LoPedido,
+) {
+    val paginas = pedido.paginasDeImagen ?: return
+    val ajustes = pedido.ajustesDeImagen ?: return
+    modelo.convertirAImagenes(origen = origen, paginas = paginas, carpeta = carpeta, ajustes = ajustes)
+}
+
+/**
  * Lo que el usuario ha ido diciendo antes de llegar al destino.
  *
  * Va junto porque se consume junto: cada herramienta mira lo suyo y el resto viene
- * vacío, que es más honesto que seis parámetros de los que cinco sobran siempre.
+ * vacío, que es más honesto que ocho parámetros de los que siete sobran siempre.
  */
 private data class LoPedido(
     val rangos: List<IntRange>? = null,
     val clave: String? = null,
+    /** Si la contraseña es para quitarla en vez de para ponerla. */
+    val quitando: Boolean = false,
     val paraUnir: List<OrigenDocumento> = emptyList(),
+    /** Cómo queda el documento tras organizarlo: qué páginas, en qué orden y giradas cómo. */
+    val orden: List<PaginaOrdenada>? = null,
+    val paginasDeImagen: List<Int>? = null,
+    val ajustesDeImagen: AjustesImagen? = null,
 )
 
 /**
@@ -482,36 +562,59 @@ private data class LoPedido(
 @Composable
 private fun FlujosDeHerramienta(
     preguntando: Herramienta?,
-    paginasDelAbierto: Int,
+    abierto: DatosDelAbierto,
     avisos: AvisosDeHerramienta?,
-    alDejarDePreguntar: () -> Unit,
-    alPedirDestino: (Herramienta) -> Unit,
-    alFijarRangos: (List<IntRange>) -> Unit,
-    alFijarClave: (String) -> Unit,
-    alOlvidarAvisos: () -> Unit,
-    alSeguirTrasAvisos: () -> Unit,
+    acciones: AccionesDeFlujo,
 ) {
     when (preguntando) {
         Herramienta.DIVIDIR ->
             DialogoDividir(
-                paginas = paginasDelAbierto,
+                paginas = abierto.paginas,
                 alAceptar = { rangos ->
-                    alDejarDePreguntar()
-                    alFijarRangos(rangos)
-                    alPedirDestino(Herramienta.DIVIDIR)
+                    acciones.alDejarDePreguntar()
+                    acciones.alRecoger { it.copy(rangos = rangos) }
+                    acciones.alPedirDestino(Herramienta.DIVIDIR)
                 },
-                alCancelar = alDejarDePreguntar,
+                alCancelar = acciones.alDejarDePreguntar,
             )
 
         Herramienta.PROTEGER ->
             DialogoContrasena(
-                quitando = false,
-                alAceptar = { clave ->
-                    alDejarDePreguntar()
-                    alFijarClave(clave)
-                    alPedirDestino(Herramienta.PROTEGER)
+                quitandoAlEmpezar = false,
+                alAceptar = { clave, quitando ->
+                    acciones.alDejarDePreguntar()
+                    acciones.alRecoger { it.copy(clave = clave, quitando = quitando) }
+                    acciones.alPedirDestino(Herramienta.PROTEGER)
                 },
-                alCancelar = alDejarDePreguntar,
+                alCancelar = acciones.alDejarDePreguntar,
+            )
+
+        Herramienta.CONVERTIR ->
+            DialogoConvertir(
+                paginas = abierto.paginas,
+                alElegirTexto = {
+                    acciones.alDejarDePreguntar()
+                    acciones.alPedirDestino(Herramienta.CONVERTIR)
+                },
+                alElegirImagenes = { paginas, ajustes ->
+                    acciones.alDejarDePreguntar()
+                    acciones.alRecoger { it.copy(paginasDeImagen = paginas, ajustesDeImagen = ajustes) }
+                    acciones.alPedirCarpeta()
+                },
+                alCancelar = acciones.alDejarDePreguntar,
+            )
+
+        Herramienta.ORGANIZAR ->
+            HojaOrganizar(
+                paginas = abierto.paginas,
+                miniaturas = abierto.miniaturas,
+                alPedirMiniatura = abierto.alPedirMiniatura,
+                alGuardar = { orden ->
+                    acciones.alDejarDePreguntar()
+                    acciones.alRecoger { it.copy(orden = orden) }
+                    acciones.alPedirDestino(Herramienta.ORGANIZAR)
+                },
+                alCerrar = acciones.alDejarDePreguntar,
             )
 
         else -> Unit
@@ -524,19 +627,48 @@ private fun FlujosDeHerramienta(
             firmados = avisos.firmados.map(::nombreDe),
             abiertosConCambios = avisos.abiertosConCambios.map(::nombreDe),
             alSeguir = {
-                alSeguirTrasAvisos()
-                alPedirDestino(Herramienta.UNIR)
+                acciones.alSeguirTrasAvisos()
+                acciones.alPedirDestino(Herramienta.UNIR)
             },
-            alCancelar = alOlvidarAvisos,
+            alCancelar = acciones.alOlvidarAvisos,
         )
     } else if (avisos != null) {
         // Nada que advertir: derecho a elegir dónde guardar.
         LaunchedEffect(avisos) {
-            alSeguirTrasAvisos()
-            alPedirDestino(Herramienta.UNIR)
+            acciones.alSeguirTrasAvisos()
+            acciones.alPedirDestino(Herramienta.UNIR)
         }
     }
 }
+
+/**
+ * Lo que los flujos necesitan saber del documento que hay abierto.
+ *
+ * Las miniaturas viajan hasta aquí porque organizar es mirar páginas: sin verlas, un
+ * reordenamiento sería mover números.
+ */
+private data class DatosDelAbierto(
+    val paginas: Int,
+    val miniaturas: Map<Int, ImageBitmap>,
+    val alPedirMiniatura: (Int) -> Unit,
+)
+
+/**
+ * Lo que un flujo puede pedir que pase después.
+ *
+ * Van agrupadas y no sueltas porque son seis y siempre viajan juntas: sueltas
+ * convertían la llamada en una fila de lambdas donde el orden era lo único que
+ * distinguía una de otra.
+ */
+private class AccionesDeFlujo(
+    val alDejarDePreguntar: () -> Unit,
+    val alPedirDestino: (Herramienta) -> Unit,
+    val alPedirCarpeta: () -> Unit,
+    /** Guarda lo que el flujo acaba de recoger, sin tocar lo que ya había. */
+    val alRecoger: ((LoPedido) -> LoPedido) -> Unit,
+    val alOlvidarAvisos: () -> Unit,
+    val alSeguirTrasAvisos: () -> Unit,
+)
 
 /**
  * Los destinos de las partes al dividir, numerados a partir del que eligió el usuario.

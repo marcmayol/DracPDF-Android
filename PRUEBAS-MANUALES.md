@@ -91,9 +91,41 @@ Colocar una firma **ancha y baja** y estirarla desde el asa hasta hacerla grande
 
 ---
 
+## Fase 6 · Caja de herramientas
+
+### 7. Las imágenes acaban en la carpeta que se eligió
+
+El selector de carpetas del sistema no existe en el emulador de la misma forma que en
+un teléfono con Drive y tarjeta, y es lo único de la conversión que no se puede
+automatizar: los tests escriben en carpetas propias.
+
+1. Herramientas → Convertir → Imágenes → JPEG, calidad al 60, páginas «1-3».
+2. Elegir una carpeta cualquiera del teléfono.
+3. Abrir esa carpeta desde la galería o el gestor de archivos.
+
+**Tiene que pasar:** hay tres ficheros, uno por página, y se ven.
+
+**Si falla:** si no aparece ninguno, el problema es el permiso del árbol elegido; si
+aparecen con nombre raro o cero bytes, es la escritura. Son dos fallos distintos.
+
+### 8. Reordenar páginas con el dedo
+
+Los tests arrastran con coordenadas; el dedo es otra cosa.
+
+1. Herramientas → Organizar páginas, mantener pulsada una miniatura y llevarla a otro
+   sitio.
+
+**Tiene que pasar:** la página se levanta, el hueco se abre bajo el dedo y al soltar
+se queda donde se dejó. Sin mantener pulsado, el gesto **desplaza la rejilla**.
+
+**Si falla:** si la lista se mueve en vez de la página, la pulsación larga no llega;
+si la página cae en un sitio distinto del que se ve, es el cálculo del hueco.
+
+---
+
 ## Fase 1 · Lo que quedó pendiente de comprobar en aparato real
 
-### 7. Abrir un PDF desde otra aplicación
+### 9. Abrir un PDF desde otra aplicación
 
 Enviar un PDF a DracPDF desde WhatsApp, Gmail y el gestor de archivos.
 
@@ -102,7 +134,7 @@ Enviar un PDF a DracPDF desde WhatsApp, Gmail y el gestor de archivos.
 **Nota:** que el selector del sistema ofrezca «Siempre» y el trato fino de los URI
 efímeros son de la Fase 11, no de ahora; aquí sólo se mira que abra.
 
-### 8. Un documento largo de verdad
+### 10. Un documento largo de verdad
 
 Abrir el PDF más gordo que haya a mano y hacer scroll rápido, zoom y saltos de
 página.
