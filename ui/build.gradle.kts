@@ -43,6 +43,16 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
 
+    // La cámara del escáner. Va en :ui y no en :adaptadores porque lo que se usa de
+    // CameraX es la previsualización —una vista de Android que vive dentro de un
+    // composable— y su enganche al ciclo de vida de la pantalla. Lo que sí es un adaptador
+    // de verdad, el recorte y la corrección de perspectiva de la foto ya hecha, está en
+    // :adaptadores y no sabe que existe ninguna cámara.
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        El único permiso peligroso de la aplicación, y sólo por el escáner.
+
+        Vive en el manifest de :ui y no en el de :app porque es de aquí de donde sale:
+        el módulo que trae la pantalla de la cámara es el que declara lo que esa pantalla
+        necesita, y así quitar el escáner algún día sería quitar un módulo y no acordarse
+        de limpiar un permiso suelto en otro fichero. El sistema los fusiona al montar el
+        APK, con lo cual el resultado es el mismo.
+
+        Se pide en el momento y explicado, nunca al arrancar: una aplicación que abre
+        pidiendo la cámara sin haber dicho para qué es una que se deniega.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!--
+        No obligatoria. Sin esto, Google Play y los gestores de aplicaciones dan por hecho
+        que un permiso de cámara implica que el aparato tiene una, y DracPDF dejaría de
+        instalarse en tabletas sin cámara trasera y en emuladores, donde además corren los
+        tests. La aplicación entera menos una pantalla funciona sin cámara ninguna.
+    -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+
+</manifest>

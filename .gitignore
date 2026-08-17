@@ -25,3 +25,6 @@ keystore.properties
 
 # Registros del compilador de Kotlin
 .kotlin/
+
+# Caché de los scripts de Python
+__pycache__/

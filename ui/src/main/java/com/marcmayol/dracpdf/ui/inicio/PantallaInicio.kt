@@ -42,12 +42,12 @@ import com.marcmayol.dracpdf.ui.tema.LocalTemaOscuro
 import com.marcmayol.dracpdf.ui.tema.MedidasLadon
 
 /**
- * La pantalla de cuando no hay nada abierto: el dragón atenuado, una frase y el
- * botón de abrir.
+ * La pantalla de cuando no hay nada abierto: el dragón atenuado, una frase, el botón
+ * de abrir y, debajo, lo que se estaba leyendo.
  *
- * La lista de recientes que dibuja el diseño llega en la Fase 7, junto con los
- * permisos persistidos que la hacen posible; enseñarla vacía y muerta ahora sería
- * peor que no enseñarla.
+ * Las dos listas se enseñan **sólo si tienen algo**. Un hueco vacío titulado
+ * «Recientes» ocupa el mismo sitio que el dragón y no dice nada; el estado de partida
+ * de esta aplicación es un documento por abrir, no un panel de control.
  */
 @Composable
 fun PantallaInicio(
@@ -58,6 +58,13 @@ fun PantallaInicio(
     alElegirAbierto: (String) -> Unit = {},
     alCerrarAbierto: (String) -> Unit = {},
     alAbrirTema: () -> Unit = {},
+    alAbrirAjustes: (() -> Unit)? = null,
+    /** Convertir imágenes, Markdown, HTML o texto a un PDF nuevo. */
+    alCrearPdf: (() -> Unit)? = null,
+    alEscanear: (() -> Unit)? = null,
+    recientes: List<RecienteEnLista> = emptyList(),
+    alElegirReciente: (String) -> Unit = {},
+    alOlvidarReciente: (String) -> Unit = {},
 ) {
     var menuAbierto by remember { mutableStateOf(false) }
 
@@ -105,6 +112,27 @@ fun PantallaInicio(
                         menuAbierto = false
                         alAbrirTema()
                     },
+                    alAbrirAjustes =
+                        alAbrirAjustes?.let {
+                            {
+                                menuAbierto = false
+                                it()
+                            }
+                        },
+                    alCrearPdf =
+                        alCrearPdf?.let {
+                            {
+                                menuAbierto = false
+                                it()
+                            }
+                        },
+                    alEscanear =
+                        alEscanear?.let {
+                            {
+                                menuAbierto = false
+                                it()
+                            }
+                        },
                 )
             }
         }
@@ -162,10 +190,10 @@ fun PantallaInicio(
                 modifier = Modifier.padding(top = 12.dp),
             )
 
-            // «Abiertos» va encima de donde irán los recientes (Fase 7). Es la misma
-            // lista que la hoja del visor y el mismo componente: dos sitios, un
-            // diseño. Sólo aparece si queda algún documento abierto —por ejemplo tras
-            // cerrar el que se estaba mirando teniendo otro detrás—.
+            // «Abiertos» va encima de los recientes. Es la misma lista que la hoja del
+            // visor y el mismo componente: dos sitios, un diseño. Sólo aparece si queda
+            // algún documento abierto —por ejemplo tras cerrar el que se estaba mirando
+            // teniendo otro detrás—.
             if (abiertos.isNotEmpty()) {
                 Column(
                     modifier =
@@ -187,6 +215,14 @@ fun PantallaInicio(
                     )
                 }
             }
+
+            if (recientes.isNotEmpty()) {
+                ListaRecientes(
+                    recientes = recientes,
+                    alElegir = alElegirReciente,
+                    alOlvidar = alOlvidarReciente,
+                )
+            }
         }
     }
 }
@@ -203,14 +239,21 @@ private fun MenuDelInicio(
     abierto: Boolean,
     alCerrar: () -> Unit,
     alElegirTema: () -> Unit,
+    alAbrirAjustes: (() -> Unit)? = null,
+    alCrearPdf: (() -> Unit)? = null,
+    alEscanear: (() -> Unit)? = null,
 ) {
     DropdownMenu(
         expanded = abierto,
         onDismissRequest = alCerrar,
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
     ) {
+        // Encabeza el menú porque es lo único que **hace** algo con documentos; el
+        // resto son preferencias y ayuda.
+        EntradaDelMenu("Crear un PDF desde…", IconosLadon.convertir, TAG_MENU_CREAR_PDF, alCrearPdf)
+        EntradaDelMenu("Escanear con la cámara", IconosLadon.anadirImagen, TAG_MENU_ESCANEAR, alEscanear)
         EntradaDelMenu("Tema", IconosLadon.tema, TAG_MENU_TEMA, alElegirTema)
-        EntradaDelMenu("Ajustes", IconosLadon.ajustes, TAG_MENU_AJUSTES)
+        EntradaDelMenu("Ajustes", IconosLadon.ajustes, TAG_MENU_AJUSTES, alAbrirAjustes)
         EntradaDelMenu("Ayuda", IconosLadon.ayuda, TAG_MENU_AYUDA)
         EntradaDelMenu("Acerca de DracPDF", IconosLadon.acercaDe, TAG_MENU_ACERCA)
     }
@@ -242,6 +285,8 @@ private const val OPACIDAD_DRAGON = 0.07f
 
 const val TAG_ABRIR = "inicio_abrir"
 const val TAG_MENU_INICIO = "inicio_menu"
+const val TAG_MENU_CREAR_PDF = "inicio_menu_crear_pdf"
+const val TAG_MENU_ESCANEAR = "inicio_menu_escanear"
 const val TAG_MENU_TEMA = "inicio_menu_tema"
 const val TAG_MENU_AJUSTES = "inicio_menu_ajustes"
 const val TAG_MENU_AYUDA = "inicio_menu_ayuda"

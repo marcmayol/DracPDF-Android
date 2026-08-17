@@ -1,7 +1,9 @@
 package com.marcmayol.dracpdf.adaptadores.fixtures
 
 import com.artifex.mupdf.fitz.Buffer
+import com.artifex.mupdf.fitz.Document
 import com.artifex.mupdf.fitz.Font
+import com.artifex.mupdf.fitz.LinkDestination
 import com.artifex.mupdf.fitz.PDFDocument
 import com.artifex.mupdf.fitz.Rect
 import java.io.File
@@ -120,6 +122,158 @@ object GeneradorFixtures {
         return destino
     }
 
+    /**
+     * Un PDF con **índice y enlaces**: lo que hace falta para probar la navegación.
+     *
+     * El índice se escribe con el iterador del motor y los enlaces con
+     * `createLink`, en vez de armar los diccionarios a mano: así el fixture se parece a
+     * lo que produce cualquier generador serio y no a lo que este proyecto entiende por
+     * un índice.
+     *
+     * Trae los dos tipos de enlace que hay que distinguir: uno que lleva a otra página
+     * del documento y otro que se va fuera.
+     */
+    fun conIndiceYEnlaces(
+        destino: File,
+        paginas: Int = PAGINAS_CON_INDICE,
+    ): File {
+        documento(destino, paginas)
+        val pdf = Document.openDocument(destino.absolutePath) as PDFDocument
+        try {
+            enlazarPrimeraPagina(pdf, paginas)
+            escribirIndice(pdf, paginas)
+            // A un fichero distinto y de vuelta: guardar encima del que está abierto
+            // deja el PDF a medias, y aquí interesa el resultado, no la maniobra.
+            val temporal = File(destino.parentFile, "tmp-${destino.name}")
+            pdf.save(temporal.absolutePath, "")
+            pdf.destroy()
+            temporal.copyTo(destino, overwrite = true)
+            temporal.delete()
+            return destino
+        } catch (e: RuntimeException) {
+            pdf.destroy()
+            throw e
+        }
+    }
+
+    /** Un enlace a la última página y otro a la web, los dos en la primera hoja. */
+    private fun enlazarPrimeraPagina(
+        pdf: PDFDocument,
+        paginas: Int,
+    ) {
+        val primera = pdf.loadPage(0)
+        try {
+            primera.createLink(
+                Rect(MARGEN_ENLACE, ALTO_A4 - ALTO_ENLACE, MARGEN_ENLACE + ANCHO_ENLACE, ALTO_A4 - MARGEN_ENLACE),
+                pdf.formatLinkURI(LinkDestination.Fit(0, paginas - 1)),
+            )
+            primera.createLink(
+                Rect(MARGEN_ENLACE, MARGEN_ENLACE, MARGEN_ENLACE + ANCHO_ENLACE, MARGEN_ENLACE + ALTO_ENLACE),
+                WEB_DE_PRUEBA,
+            )
+        } finally {
+            primera.destroy()
+        }
+    }
+
+    /** Una entrada por página, todas al mismo nivel: «Capítulo 1», «Capítulo 2»… */
+    private fun escribirIndice(
+        pdf: PDFDocument,
+        paginas: Int,
+    ) {
+        val iterador = pdf.outlineIterator()
+        try {
+            repeat(paginas) { indice ->
+                iterador.insert(
+                    "Capítulo ${indice + 1}",
+                    pdf.formatLinkURI(LinkDestination.Fit(0, indice)),
+                    false,
+                    0f,
+                    0f,
+                    0f,
+                    0,
+                )
+                // `insert` deja el cursor en la entrada nueva; hay que avanzar para que
+                // la siguiente vaya detrás y no delante.
+                iterador.next()
+            }
+        } finally {
+            iterador.destroy()
+        }
+    }
+
+    /**
+     * Un PDF con **un título, un párrafo y una tabla conocida**, para las conversiones.
+     *
+     * La tabla se dibuja como la dibuja cualquier generador de informes: texto colocado en
+     * unas coordenadas, sin rejilla y sin nada que diga «esto es una tabla», porque eso es
+     * justo lo que un PDF no guarda. Que la detección tenga que adivinarla a partir de las
+     * posiciones no es una limitación del fixture: es el problema de verdad.
+     *
+     * Todo en ASCII a propósito: el fixture se escribe con la codificación latina simple
+     * de Helvetica, y meter acentos aquí probaría la codificación del generador en vez de
+     * la conversión. Los acentos y el escapado se prueban aparte, con estructuras
+     * inventadas que no pasan por ningún PDF.
+     */
+    fun conTabla(destino: File): File {
+        val pdf = PDFDocument()
+        try {
+            val fuente = pdf.addSimpleFont(Font("Helvetica"), Font.SIMPLE_ENCODING_LATIN)
+            val recursos =
+                pdf.newDictionary().apply {
+                    put("Font", pdf.newDictionary().apply { put("F1", fuente) })
+                }
+            val hoja = pdf.addPage(Rect(0f, 0f, ANCHO_A4, ALTO_A4), 0, recursos, contenidoConTabla())
+            pdf.insertPage(-1, hoja)
+            destino.parentFile?.mkdirs()
+            pdf.save(destino.absolutePath, "")
+        } finally {
+            pdf.destroy()
+        }
+        return destino
+    }
+
+    /** Lo que dice la tabla de [conTabla], celda a celda, para comparar contra ello. */
+    val TABLA_ESPERADA: List<List<String>> =
+        listOf(
+            listOf("Producto", "Unidades", "Precio"),
+            listOf("Tinta", "12", "3,50"),
+            listOf("Papel", "500", "0,02"),
+            listOf("Grapas", "40", "1,10"),
+        )
+
+    /** El título de [conTabla], que la conversión tiene que reconocer como tal. */
+    const val TITULO_CON_TABLA = "Informe de existencias"
+
+    /** El párrafo de [conTabla], que no es un título por mucho que vaya solo. */
+    const val PARRAFO_CON_TABLA = "Resumen del almacen en la fecha indicada."
+
+    /**
+     * El título en 24 puntos, el párrafo en 11 y la tabla en 11, con las columnas bien
+     * separadas y las filas seguidas: las tres cosas que la deducción mira.
+     */
+    private fun contenidoConTabla(): String =
+        buildString {
+            append("BT /F1 $CUERPO_DE_TITULO Tf $COLUMNAS_TABLA_PRIMERA $ALTURA_TITULO Td ($TITULO_CON_TABLA) Tj ET\n")
+            append("BT /F1 $CUERPO_NORMAL Tf $COLUMNAS_TABLA_PRIMERA $ALTURA_PARRAFO Td ($PARRAFO_CON_TABLA) Tj ET\n")
+            TABLA_ESPERADA.forEachIndexed { fila, celdas ->
+                val altura = ALTURA_PRIMERA_FILA - fila * SEPARACION_DE_FILAS
+                celdas.forEachIndexed { columna, celda ->
+                    val x = COLUMNAS_TABLA_PRIMERA + columna * SEPARACION_DE_COLUMNAS
+                    append("BT /F1 $CUERPO_NORMAL Tf $x $altura Td ($celda) Tj ET\n")
+                }
+            }
+        }
+
+    private const val CUERPO_DE_TITULO = 24
+    private const val CUERPO_NORMAL = 11
+    private const val ALTURA_TITULO = 770
+    private const val ALTURA_PARRAFO = 720
+    private const val ALTURA_PRIMERA_FILA = 640
+    private const val SEPARACION_DE_FILAS = 25
+    private const val COLUMNAS_TABLA_PRIMERA = 72
+    private const val SEPARACION_DE_COLUMNAS = 160
+
     private fun diccionarioDeImagen(pdf: PDFDocument) =
         pdf.newDictionary().apply {
             put("Type", pdf.newName("XObject"))
@@ -148,4 +302,14 @@ object GeneradorFixtures {
     private const val CANALES = 3
     private const val BITS_POR_COMPONENTE = 8
     private const val MAXIMO_CANAL = 255
+
+    /** Suficientes para que «ir a la última» sea un salto de verdad. */
+    const val PAGINAS_CON_INDICE = 5
+
+    /** La dirección del enlace externo del fixture. No se visita en ningún test. */
+    const val WEB_DE_PRUEBA = "https://marcmayol.com/dracpdf"
+
+    private const val MARGEN_ENLACE = 72f
+    private const val ANCHO_ENLACE = 200f
+    private const val ALTO_ENLACE = 40f
 }

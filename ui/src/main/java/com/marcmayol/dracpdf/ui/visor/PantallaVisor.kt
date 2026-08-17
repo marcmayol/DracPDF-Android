@@ -18,11 +18,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -37,14 +40,17 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.ImageBitmap
@@ -52,14 +58,22 @@ import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
+import com.marcmayol.dracpdf.dominio.modelo.DestinoEnlace
 import com.marcmayol.dracpdf.dominio.modelo.Firma
+import com.marcmayol.dracpdf.dominio.modelo.PuntoPt
 import com.marcmayol.dracpdf.dominio.modelo.TamanoPt
 import com.marcmayol.dracpdf.dominio.modelo.TipoCampo
+import com.marcmayol.dracpdf.dominio.modelo.contiene
+import com.marcmayol.dracpdf.ui.compartir.Compartir
 import com.marcmayol.dracpdf.ui.firmas.FirmasViewModel
 import com.marcmayol.dracpdf.ui.firmas.HojaDibujarFirma
 import com.marcmayol.dracpdf.ui.firmas.HojaFirmas
@@ -89,17 +103,24 @@ fun PantallaVisor(
     alAbrirOtro: () -> Unit = {},
     alElegirHerramienta: (Herramienta) -> Unit = {},
     firmas: FirmasViewModel? = null,
+    /** Imprimir y compartir salen de aquí porque necesitan el fichero, no el documento. */
+    alImprimir: (() -> Unit)? = null,
+    alCompartirDocumento: (() -> Unit)? = null,
 ) {
     val estado by modelo.estado.collectAsState()
     val paginas by modelo.paginas.collectAsState()
     val campos by modelo.campos.collectAsState()
+    val enlaces by modelo.enlaces.collectAsState()
     val lista = rememberLazyListState()
+    val portapapeles = LocalClipboardManager.current
+    val contexto = LocalContext.current
 
     // El zoom del gesto va aparte del zoom fijado: durante el pellizco sólo se estira
     // el bitmap que ya hay —gratis, lo hace la GPU— y el render nítido se pide cuando
     // el dedo se detiene. Rasterizar por fotograma daría un tirón en cada uno.
     var zoomVivo by remember { mutableFloatStateOf(estado.zoom) }
     var indiceAbierto by remember { mutableStateOf(false) }
+    var vistaAbierta by remember { mutableStateOf(false) }
     var saltarA by remember { mutableStateOf<Int?>(null) }
     var opcionesDe by remember { mutableStateOf<CampoFormulario?>(null) }
     var firmasAbiertas by remember { mutableStateOf(false) }
@@ -123,108 +144,171 @@ fun PantallaVisor(
         modelo.fijarZoom(zoomVivo)
     }
 
-    LaunchedEffect(lista) {
-        snapshotFlow {
-            val visibles = lista.layoutInfo.visibleItemsInfo
-            if (visibles.isEmpty()) null else visibles.first().index to visibles.last().index
-        }.collect { ventana ->
-            ventana?.let { (primera, ultima) -> modelo.alCambiarVentana(primera, ultima) }
-        }
-    }
+    // La caja de fuera existe para una sola pregunta: **cuánto ancho hay de verdad**.
+    // De ahí sale si se pueden ofrecer dos páginas, y se decide con el ancho y no con
+    // el modelo del aparato porque el mismo teléfono no cabe de pie y sí cabe tumbado,
+    // y una ventana a media pantalla no es «una tablet» por mucho que corra en una.
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val cabenDos = maxWidth >= ANCHO_MINIMO_PARA_DOS
+        val porFila = estado.vista.paginasPorFila(cabenDos)
 
-    Column(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                // El teclado del formulario levanta la barra del modo en vez de
-                // taparla. Es la queja número uno de rellenar formularios en el móvil,
-                // y se resuelve aquí, una vez, y no campo a campo.
-                .imePadding(),
-    ) {
-        AnimatedVisibility(visible = estado.chromeVisible, enter = fadeIn(), exit = fadeOut()) {
-            BarraDeArriba(
-                estado = estado,
-                modelo = modelo,
-                alSalir = alSalir,
-                documentosAbiertos = documentosAbiertos,
-                alAbrirDocumentos = alAbrirDocumentos,
-                alAbrirOtro = alAbrirOtro,
-            )
+        LaunchedEffect(lista, porFila) {
+            snapshotFlow {
+                val visibles = lista.layoutInfo.visibleItemsInfo
+                if (visibles.isEmpty()) null else visibles.first().index to visibles.last().index
+            }.collect { ventana ->
+                // La lista cuenta filas y el modelo cuenta páginas: con la doble página
+                // puesta, la fila 3 es la página 6.
+                ventana?.let { (primera, ultima) ->
+                    modelo.alCambiarVentana(primera * porFila, ultima * porFila + porFila - 1)
+                }
+            }
         }
 
-        estado.aviso?.let { aviso ->
-            BandaAvisoFormulario(aviso = aviso, alDescartar = modelo::descartarAviso)
-        }
+        ConservarLaPagina(porFila = porFila, pagina = estado.paginaActual, lista = lista)
 
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            ListaDePaginas(
-                estado = estado,
-                paginas = paginas,
-                campos = campos,
-                lista = lista,
-                zoomVivo = zoomVivo,
-                tamanoDe = modelo::tamanoDe,
-                // Cada tipo de campo se toca de una manera: una casilla cambia sola,
-                // una elección abre su lista, y un texto se pone a esperar teclas.
-                alTocarCampo = { campo -> tocarCampo(modelo, campo) { opcionesDe = campo } },
-                alEscribirCampo = { campo, valor -> modelo.escribirTexto(campo.id, valor) },
-                alIrAlSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
-                firmaEnMano = firmaEnMano,
-                alArrastrarFirma = modelo::moverColocacion,
-                alRedimensionarFirma = modelo::redimensionarColocacion,
-                alTocar = modelo::alternarChrome,
-                // Los dos gestos de zoom devuelven cuánto ha crecido de verdad la
-                // página —el factor pedido, ya recortado contra los topes—, porque es lo
-                // que necesita la lista para dejar quieto el punto que se está mirando.
-                alDobleTocar = {
-                    val anterior = zoomVivo
-                    modelo.fijarZoom(if (estado.zoom > AJUSTE_ANCHO) AJUSTE_ANCHO else CIEN_POR_CIEN)
-                    zoomVivo = modelo.estado.value.zoom
-                    zoomVivo / anterior
-                },
-                alPellizcar = { factor ->
-                    val anterior = zoomVivo
-                    zoomVivo = (anterior * factor).coerceIn(VisorViewModel.ZOOM_MINIMO, VisorViewModel.ZOOM_MAXIMO)
-                    zoomVivo / anterior
-                },
-            )
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    // El teclado del formulario levanta la barra del modo en vez de
+                    // taparla. Es la queja número uno de rellenar formularios en el
+                    // móvil, y se resuelve aquí, una vez, y no campo a campo.
+                    .imePadding(),
+        ) {
+            AnimatedVisibility(visible = estado.chromeVisible, enter = fadeIn(), exit = fadeOut()) {
+                BarraDeArriba(
+                    estado = estado,
+                    modelo = modelo,
+                    alSalir = alSalir,
+                    documentosAbiertos = documentosAbiertos,
+                    alAbrirDocumentos = alAbrirDocumentos,
+                    alAbrirOtro = alAbrirOtro,
+                    alImprimir = alImprimir,
+                    alCompartirDocumento = alCompartirDocumento,
+                    alAjustarLaVista = { vistaAbierta = true },
+                )
+            }
 
-            if (estado.paginas > 0) {
+            estado.aviso?.let { aviso ->
+                BandaAvisoFormulario(aviso = aviso, alDescartar = modelo::descartarAviso)
+            }
+
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                ListaDePaginas(
+                    estado = estado,
+                    paginas = paginas,
+                    campos = campos,
+                    lista = lista,
+                    zoomVivo = zoomVivo,
+                    porFila = porFila,
+                    tamanoDe = modelo::tamanoDe,
+                    // Cada tipo de campo se toca de una manera: una casilla cambia sola,
+                    // una elección abre su lista, y un texto se pone a esperar teclas.
+                    alTocarCampo = { campo -> tocarCampo(modelo, campo) { opcionesDe = campo } },
+                    alEscribirCampo = { campo, valor -> modelo.escribirTexto(campo.id, valor) },
+                    alIrAlSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
+                    firmaEnMano = firmaEnMano,
+                    alArrastrarFirma = modelo::moverColocacion,
+                    alRedimensionarFirma = modelo::redimensionarColocacion,
+                    alTocar = modelo::alternarChrome,
+                    // Los dos gestos de zoom devuelven cuánto ha crecido de verdad la
+                    // página —el factor pedido, ya recortado contra los topes—, porque es
+                    // lo que necesita la lista para dejar quieto el punto que se mira.
+                    alDobleTocar = {
+                        val anterior = zoomVivo
+                        modelo.fijarZoom(if (estado.zoom > SIN_ZOOM) SIN_ZOOM else EL_DOBLE)
+                        zoomVivo = modelo.estado.value.zoom
+                        zoomVivo / anterior
+                    },
+                    alPellizcar = { factor ->
+                        val anterior = zoomVivo
+                        zoomVivo =
+                            (anterior * factor).coerceIn(VisorViewModel.ZOOM_MINIMO, VisorViewModel.ZOOM_MAXIMO)
+                        zoomVivo / anterior
+                    },
+                    alSeleccionar = modelo::seleccionarPalabraEn,
+                    alMoverAsa = modelo::moverAsa,
+                    enlaceEn = { pagina, punto ->
+                        enlaces[pagina]?.firstOrNull { it.marco.contiene(punto) }?.destino
+                    },
+                    alSeguirEnlace = modelo::seguirEnlace,
+                )
+
                 PildoraPagina(
-                    texto = "${estado.paginaActual + 1} / ${estado.paginas}",
+                    estado = estado,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+                )
+            }
+
+            AnimatedVisibility(visible = estado.chromeVisible, enter = fadeIn(), exit = fadeOut()) {
+                BarraDelModo(
+                    modo = estado.modo,
+                    alAbrirIndice = { indiceAbierto = true },
+                    alEntrarEnFormulario = modelo::entrarEnFormulario,
+                    alAbrirHerramientas = { herramientasAbiertas = true },
+                    alCampoAnterior = { modelo.irACampo(Direccion.ANTERIOR) },
+                    alCampoSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
+                    alConfirmarColocacion = modelo::confirmarColocacion,
+                    alCancelarColocacion = modelo::cancelarColocacion,
+                    alAbrirFirmas = {
+                        firmas?.cargar()
+                        firmasAbiertas = true
+                    },
+                    alCopiar = {
+                        estado.seleccion
+                            ?.seleccion
+                            ?.texto
+                            ?.let { portapapeles.setText(AnnotatedString(it)) }
+                        modelo.soltarSeleccion()
+                    },
+                    alCompartir = {
+                        estado.seleccion
+                            ?.seleccion
+                            ?.texto
+                            ?.let { Compartir.texto(contexto, it) }
+                    },
+                    alDeshacer = modelo::deshacer,
+                    hayQueDeshacer = estado.hayQueDeshacer,
+                    hayCampoAnterior = estado.hayCampoAnterior,
+                    hayCampoSiguiente = estado.hayCampoSiguiente,
+                    campos = estado.formulario?.campos ?: 0,
+                    formularioDisponible = estado.hayFormulario,
+                    cambiosSinGuardar = estado.cambiosSinGuardar,
+                    guardando = estado.guardando,
                 )
             }
         }
 
-        AnimatedVisibility(visible = estado.chromeVisible, enter = fadeIn(), exit = fadeOut()) {
-            BarraDelModo(
-                modo = estado.modo,
-                alAbrirIndice = { indiceAbierto = true },
-                alEntrarEnFormulario = modelo::entrarEnFormulario,
-                alAbrirHerramientas = { herramientasAbiertas = true },
-                alCampoAnterior = { modelo.irACampo(Direccion.ANTERIOR) },
-                alCampoSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
-                alConfirmarColocacion = modelo::confirmarColocacion,
-                alCancelarColocacion = modelo::cancelarColocacion,
-                alAbrirFirmas = {
-                    firmas?.cargar()
-                    firmasAbiertas = true
-                },
-                hayCampoAnterior = estado.hayCampoAnterior,
-                hayCampoSiguiente = estado.hayCampoSiguiente,
-                campos = estado.formulario?.campos ?: 0,
-                formularioDisponible = estado.hayFormulario,
-                cambiosSinGuardar = estado.cambiosSinGuardar,
-                guardando = estado.guardando,
+        if (vistaAbierta) {
+            HojaVista(
+                vista = estado.vista,
+                cabenDosPaginas = cabenDos,
+                alAjustar = modelo::ajustarLaVista,
+                alAlternarDoblePagina = modelo::alternarDoblePagina,
+                alGirar = modelo::girarLaVista,
+                alCerrar = { vistaAbierta = false },
             )
         }
+
+        LaunchedEffect(saltarA) {
+            saltarA?.let { pagina ->
+                lista.scrollToItem(pagina / porFila)
+                saltarA = null
+            }
+        }
+
+        TraerElCampoALaVista(
+            modelo = modelo,
+            lista = lista,
+            estado = estado,
+            zoom = zoomVivo,
+            porFila = porFila,
+        )
     }
 
-    estado.error?.let { error ->
-        BandaError(mensaje = error, alDescartar = modelo::descartarError)
-    }
+    DialogosDelDocumento(estado = estado, modelo = modelo)
 
     HojasDeFirmas(
         firmas = firmas,
@@ -266,29 +350,106 @@ fun PantallaVisor(
     }
 
     if (indiceAbierto) {
-        val miniaturas by modelo.miniaturas.collectAsState()
-        HojaIndice(
-            paginas = estado.paginas,
-            paginaActual = estado.paginaActual,
-            miniaturas = miniaturas,
-            alPedirMiniatura = modelo::pedirMiniatura,
+        HojaDelIndice(
+            estado = estado,
+            modelo = modelo,
             alElegirPagina = { pagina ->
-                modelo.irAPagina(pagina)
                 indiceAbierto = false
                 saltarA = pagina
             },
             alCerrar = { indiceAbierto = false },
         )
     }
+}
 
-    LaunchedEffect(saltarA) {
-        saltarA?.let { pagina ->
-            lista.scrollToItem(pagina)
-            saltarA = null
-        }
+/**
+ * Lo que el documento tiene que decir por encima de todo lo demás: un error, un enlace
+ * que sale fuera y espera un sí, o su ficha.
+ *
+ * Van juntos y fuera de la pantalla porque no dependen de nada suyo —sólo del estado y
+ * del modelo— y porque dentro engordaban el visor con tres ramas que no tienen que ver
+ * con enseñar páginas.
+ */
+@Composable
+private fun DialogosDelDocumento(
+    estado: EstadoVisor,
+    modelo: VisorViewModel,
+) {
+    val contexto = LocalContext.current
+
+    estado.error?.let { error ->
+        BandaError(mensaje = error, alDescartar = modelo::descartarError)
     }
 
-    TraerElCampoALaVista(modelo = modelo, lista = lista, estado = estado, zoom = zoomVivo)
+    estado.enlacePreguntado?.let { url ->
+        DialogoEnlace(
+            url = url,
+            alAbrir = {
+                modelo.olvidarEnlace()
+                Compartir.abrirEnlace(contexto, url)
+            },
+            alCancelar = modelo::olvidarEnlace,
+        )
+    }
+
+    estado.propiedades?.let { ficha ->
+        DialogoPropiedades(propiedades = ficha, alCerrar = modelo::cerrarPropiedades)
+    }
+}
+
+/**
+ * El índice del documento, con sus miniaturas.
+ *
+ * Se pide al abrir la hoja y no al abrir el documento: en uno de quinientas páginas es
+ * un recorrido que casi nadie va a mirar.
+ */
+@Composable
+private fun HojaDelIndice(
+    estado: EstadoVisor,
+    modelo: VisorViewModel,
+    alElegirPagina: (Int) -> Unit,
+    alCerrar: () -> Unit,
+) {
+    val miniaturas by modelo.miniaturas.collectAsState()
+    LaunchedEffect(Unit) { modelo.cargarIndice() }
+    HojaIndice(
+        paginas = estado.paginas,
+        paginaActual = estado.paginaActual,
+        indice = estado.indice,
+        miniaturas = miniaturas,
+        alPedirMiniatura = modelo::pedirMiniatura,
+        alElegirPagina = { pagina ->
+            modelo.irAPagina(pagina)
+            alElegirPagina(pagina)
+        },
+        alCerrar = alCerrar,
+    )
+}
+
+/**
+ * Deja al lector donde estaba cuando cambia cuántas páginas van por fila.
+ *
+ * La lista guarda su sitio por número de fila, y al pasar de una página por fila a dos
+ * la fila 40 deja de ser la página 40 para ser la 80. Sin esto, encender la doble
+ * página teletransporta a mitad del documento, que es la clase de fallo que hace
+ * desconfiar de la opción entera.
+ *
+ * La primera composición no cuenta: ahí no se ha cambiado nada, y desplazarse pisaría
+ * la página por la que el documento se estaba abriendo.
+ */
+@Composable
+private fun ConservarLaPagina(
+    porFila: Int,
+    pagina: Int,
+    lista: LazyListState,
+) {
+    var anterior by remember { mutableIntStateOf(porFila) }
+    LaunchedEffect(porFila) {
+        if (porFila != anterior) {
+            anterior = porFila
+            lista.scrollToItem(pagina / porFila)
+        }
+    }
 }
 
 /**
@@ -305,6 +466,9 @@ private fun BarraDeArriba(
     documentosAbiertos: Int,
     alAbrirDocumentos: () -> Unit,
     alAbrirOtro: () -> Unit,
+    alImprimir: (() -> Unit)?,
+    alCompartirDocumento: (() -> Unit)?,
+    alAjustarLaVista: () -> Unit,
 ) {
     when (estado.modo) {
         ModoVisor.Formulario ->
@@ -318,6 +482,23 @@ private fun BarraDeArriba(
                 accionHabilitada = estado.cambiosSinGuardar && !estado.guardando,
             )
 
+        ModoVisor.Buscar ->
+            BarraDeBusqueda(
+                busqueda = estado.busqueda ?: Busqueda(),
+                alEscribir = modelo::buscar,
+                alAnterior = { modelo.irACoincidencia(Direccion.ANTERIOR) },
+                alSiguiente = { modelo.irACoincidencia(Direccion.SIGUIENTE) },
+                alCerrar = modelo::cerrarBusqueda,
+            )
+
+        ModoVisor.SeleccionarTexto ->
+            BarraSuperiorDelModo(
+                titulo = "Selección",
+                accion = "Hecho",
+                alCerrar = modelo::soltarSeleccion,
+                alAccionar = modelo::soltarSeleccion,
+            )
+
         // La colocación de una firma conserva la barra del documento mientras se
         // decide dónde va: sus dos controles viven abajo, junto al pulgar que arrastra.
         ModoVisor.Lectura, ModoVisor.ColocarFirma ->
@@ -327,6 +508,11 @@ private fun BarraDeArriba(
                 documentosAbiertos = documentosAbiertos,
                 alAbrirDocumentos = alAbrirDocumentos,
                 alAbrirOtro = alAbrirOtro,
+                alBuscar = modelo::abrirBusqueda,
+                alImprimir = alImprimir,
+                alCompartir = alCompartirDocumento,
+                alVerPropiedades = modelo::verPropiedades,
+                alAjustarLaVista = alAjustarLaVista,
             )
     }
 }
@@ -360,6 +546,7 @@ private fun TraerElCampoALaVista(
     lista: LazyListState,
     estado: EstadoVisor,
     zoom: Float,
+    porFila: Int,
 ) {
     val desplazar by modelo.desplazarA.collectAsState()
     val altoPantalla = LocalConfiguration.current.screenHeightDp
@@ -368,24 +555,13 @@ private fun TraerElCampoALaVista(
         desplazar?.let { destino ->
             val altoPagina = altoDePaginaDe(altoPantalla, estado, zoom)
             val dentroDeLaPagina = destino.fraccionY * altoPagina
-            lista.scrollToItem(destino.pagina, (dentroDeLaPagina - altoPagina * MARGEN_SOBRE_EL_TECLADO).toInt())
+            lista.scrollToItem(
+                destino.pagina / porFila,
+                (dentroDeLaPagina - altoPagina * MARGEN_SOBRE_EL_TECLADO).toInt(),
+            )
             modelo.desplazamientoAtendido()
         }
     }
-}
-
-/**
- * Cuánto mide de alto la página en píxeles, para saber dónde cae un campo dentro de
- * ella. Es una estimación: basta para dejar el campo a la vista, y quien afina el
- * resto es el propio scroll.
- */
-private fun altoDePaginaDe(
-    altoPantallaDp: Int,
-    estado: EstadoVisor,
-    zoom: Float,
-): Float {
-    val proporcion = estado.tamanoEstimado?.let { it.alto / it.ancho } ?: PROPORCION_A4
-    return altoPantallaDp * proporcion * zoom
 }
 
 @Composable
@@ -395,6 +571,7 @@ private fun ListaDePaginas(
     campos: Map<Int, List<CampoFormulario>>,
     lista: LazyListState,
     zoomVivo: Float,
+    porFila: Int,
     tamanoDe: (Int) -> TamanoPt?,
     alTocarCampo: (CampoFormulario) -> Unit,
     alEscribirCampo: (CampoFormulario, String) -> Unit,
@@ -405,12 +582,44 @@ private fun ListaDePaginas(
     alTocar: () -> Unit,
     alDobleTocar: () -> Float,
     alPellizcar: (Float) -> Float,
+    alSeleccionar: (Int, PuntoPt) -> Unit,
+    alMoverAsa: (Boolean, PuntoPt) -> Unit,
+    enlaceEn: (Int, PuntoPt) -> DestinoEnlace?,
+    alSeguirEnlace: (DestinoEnlace) -> Unit,
 ) {
     val scrollHorizontal = rememberScrollState()
     val ajustePendiente = remember { mutableStateOf(Offset.Zero) }
+    val giro = estado.vista.giro
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val anchoPagina: Dp = maxWidth * zoomVivo
+        val proporcionDelDocumento = estado.tamanoEstimado?.let { it.alto / it.ancho } ?: PROPORCION_A4
+        val anchoPagina: Dp =
+            anchoDeLaPagina(
+                disponible = maxWidth,
+                altoDisponible = maxHeight,
+                proporcion = proporcionDelDocumento,
+                vista = estado.vista,
+                porFila = porFila,
+            ) * zoomVivo
+        val anchoFila = anchoPagina * porFila + MedidasLadon.hueco * (porFila - 1)
+        val filas = (estado.paginas + porFila - 1) / porFila
+
+        val maqueta =
+            with(LocalDensity.current) {
+                MaquetaDeLaLista(
+                    anchoPagina = anchoPagina.toPx(),
+                    hueco = MedidasLadon.hueco.toPx(),
+                    margenIzquierdo = maxOf(0.dp, (maxWidth - anchoFila) / 2).toPx(),
+                    porFila = porFila,
+                    giro = giro,
+                    paginas = estado.paginas,
+                )
+            }
+
+        // La maqueta cambia con cada fotograma de un pellizco. Se lee por referencia y
+        // no se pasa como clave del `pointerInput`: reiniciar el detector de gestos a
+        // media ampliación se comería el toque que lo empezó.
+        val maquetaViva = rememberUpdatedState(maqueta)
 
         AplicarElAnclaje(pendiente = ajustePendiente, lista = lista, scrollHorizontal = scrollHorizontal)
 
@@ -423,7 +632,19 @@ private fun ListaDePaginas(
                     // desplazado, que es lo que hace falta para anclar el zoom.
                     .pointerInput(Unit) {
                         detectTapGestures(
-                            onTap = { alTocar() },
+                            // Un toque puede ser tres cosas, y se deciden aquí porque
+                            // este es el único punto que sabe traducir la pantalla a
+                            // página: seguir un enlace, apagar el chrome, o nada.
+                            onTap = { donde ->
+                                val enLaPagina =
+                                    paginaYPunto(donde, lista, scrollHorizontal, tamanoDe, maquetaViva.value)
+                                val enlace = enLaPagina?.let { (pagina, punto) -> enlaceEn(pagina, punto) }
+                                if (enlace == null) alTocar() else alSeguirEnlace(enlace)
+                            },
+                            onLongPress = { donde ->
+                                paginaYPunto(donde, lista, scrollHorizontal, tamanoDe, maquetaViva.value)
+                                    ?.let { (pagina, punto) -> alSeleccionar(pagina, punto) }
+                            },
                             onDoubleTap = { donde ->
                                 ajustePendiente.value += anclaje(donde, alDobleTocar(), lista, scrollHorizontal)
                             },
@@ -455,57 +676,47 @@ private fun ListaDePaginas(
                             } while (evento.changes.any { it.pressed })
                         }
                     }
-                    // Con zoom la página es más ancha que la pantalla, así que la
-                    // columna entera se desplaza en horizontal.
-                    .then(if (zoomVivo > 1f) Modifier.horizontalScroll(scrollHorizontal) else Modifier),
+                    // Con zoom, o con la página entera de lado, la fila puede ser más
+                    // ancha que la pantalla: entonces —y sólo entonces— se desplaza en
+                    // horizontal. A página completa nunca sobra, y el scroll estorbaría.
+                    .then(if (anchoFila > maxWidth) Modifier.horizontalScroll(scrollHorizontal) else Modifier),
+            contentAlignment = Alignment.TopCenter,
         ) {
             LazyColumn(
                 state = lista,
-                modifier = Modifier.width(anchoPagina).fillMaxSize().testTag(TAG_LISTA),
+                modifier = Modifier.width(anchoFila).fillMaxSize().testTag(TAG_LISTA),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(MedidasLadon.hueco),
-                contentPadding = PaddingValues(vertical = 14.dp),
+                contentPadding = PaddingValues(vertical = PADDING_VERTICAL),
             ) {
-                items(count = estado.paginas, key = { indice -> indice }) { indice ->
-                    val tamano = tamanoDe(indice)
-                    val proporcion = if (tamano == null) PROPORCION_A4 else tamano.alto / tamano.ancho
-                    PaginaDelDocumento(
-                        indice = indice,
-                        mapa = mejorDisponible(paginas, indice, zoomVivo),
-                        ancho = anchoPagina,
-                        alto = anchoPagina * proporcion,
-                    ) {
-                        // El overlay sólo existe dentro del modo y sólo para las
-                        // páginas que están a la vista: es el mismo trato perezoso que
-                        // reciben los píxeles, y no hay nada que guardar al soltarlo
-                        // porque los valores viven en el documento.
-                        val colocacion = estado.colocacion?.takeIf { it.pagina == indice }
-                        if (colocacion != null && firmaEnMano != null && tamano != null) {
-                            OverlayColocacion(
-                                firma = firmaEnMano,
-                                colocacion = colocacion,
-                                tamano = tamano,
-                                ancho = anchoPagina,
-                                alto = anchoPagina * proporcion,
-                                alArrastrar = alArrastrarFirma,
-                                alRedimensionar = alRedimensionarFirma,
-                            )
-                        }
-
-                        val delaPagina = campos[indice]
-                        if (estado.modo == ModoVisor.Formulario && tamano != null && !delaPagina.isNullOrEmpty()) {
-                            OverlayCampos(
-                                campos = delaPagina,
-                                tamano = tamano,
-                                ancho = anchoPagina,
-                                alto = anchoPagina * proporcion,
-                                campoActivo = estado.campoActivo,
-                                alTocarCampo = alTocarCampo,
-                                alEscribir = alEscribirCampo,
-                                hayCampoSiguiente = estado.hayCampoSiguiente,
-                                alIrAlSiguiente = alIrAlSiguiente,
-                            )
-                        }
+                items(count = filas, key = { fila -> fila }) { fila ->
+                    FilaDePaginas(
+                        fila = fila,
+                        porFila = porFila,
+                        anchoPagina = anchoPagina,
+                        giro = giro,
+                        estado = estado,
+                        dibujadas = paginas,
+                        zoom = zoomVivo,
+                        tamanoDe = tamanoDe,
+                    ) { indice, caja ->
+                        ContenidoDeLaPagina(
+                            indice = indice,
+                            caja = caja,
+                            estado = estado,
+                            campos = campos,
+                            tamanoDe = tamanoDe,
+                            firmaEnMano = firmaEnMano,
+                            acciones =
+                                AccionesSobreLaPagina(
+                                    alTocarCampo = alTocarCampo,
+                                    alEscribirCampo = alEscribirCampo,
+                                    alIrAlSiguiente = alIrAlSiguiente,
+                                    alArrastrarFirma = alArrastrarFirma,
+                                    alRedimensionarFirma = alRedimensionarFirma,
+                                    alMoverAsa = alMoverAsa,
+                                ),
+                        )
                     }
                 }
             }
@@ -514,35 +725,137 @@ private fun ListaDePaginas(
 }
 
 /**
- * Cuánto hay que desplazar la vista para que el punto que se está ampliando se quede
- * donde estaba.
+ * Una fila de la lista: una página, o dos cuando la pantalla da para ello.
  *
- * Sin esto el zoom crece desde la esquina de arriba a la izquierda y lo que se estaba
- * mirando se escapa de la pantalla, que es el defecto clásico del zoom en un visor.
- * Se calcula **antes** de que la página se vuelva a medir, con la posición que el
- * contenido tiene todavía.
+ * El hueco vacío de la última fila impar se reserva igual, en vez de centrar la página
+ * suelta: en un libro la última hoja tampoco se coloca en medio, y verla saltar al
+ * centro al llegar al final parece un fallo de maquetación.
  */
-private fun anclaje(
-    centro: Offset,
-    factorReal: Float,
-    lista: LazyListState,
-    scrollHorizontal: ScrollState,
-): Offset {
-    if (!factorReal.isFinite() || factorReal == 1f) return Offset.Zero
+@Composable
+private fun FilaDePaginas(
+    fila: Int,
+    porFila: Int,
+    anchoPagina: Dp,
+    giro: GiroDeVista,
+    estado: EstadoVisor,
+    dibujadas: Map<ClavePagina, ImageBitmap>,
+    zoom: Float,
+    tamanoDe: (Int) -> TamanoPt?,
+    encima: @Composable (Int, CajaDePagina) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(MedidasLadon.hueco)) {
+        repeat(porFila) { columna ->
+            val indice = fila * porFila + columna
+            if (indice >= estado.paginas) {
+                Spacer(modifier = Modifier.width(anchoPagina))
+            } else {
+                val tamano = tamanoDe(indice)
+                val proporcion = if (tamano == null) PROPORCION_A4 else tamano.alto / tamano.ancho
+                val caja = cajaDePagina(anchoPagina, proporcion, giro)
+                PaginaDelDocumento(
+                    indice = indice,
+                    mapa = mejorDisponible(dibujadas, indice, zoom),
+                    caja = caja,
+                    giro = giro,
+                ) {
+                    encima(indice, caja)
+                }
+            }
+        }
+    }
+}
 
-    val crecimiento = factorReal - 1f
-    val visibles = lista.layoutInfo.visibleItemsInfo
-    // La página bajo el dedo, y si el dedo cae en un hueco, la primera visible: el
-    // desplazamiento se mide desde el borde de esa página, no desde el principio del
-    // documento, que con 500 páginas ni se conoce ni haría falta.
-    val pagina =
-        visibles.firstOrNull { centro.y >= it.offset && centro.y < it.offset + it.size }
-            ?: visibles.firstOrNull()
+/**
+ * Lo que cada gesto de un overlay le pide al modelo.
+ *
+ * Van juntas porque siempre viajan juntas hasta la página, y sueltas convertían la
+ * llamada en una fila de lambdas donde el orden era lo único que las distinguía.
+ */
+private class AccionesSobreLaPagina(
+    val alTocarCampo: (CampoFormulario) -> Unit,
+    val alEscribirCampo: (CampoFormulario, String) -> Unit,
+    val alIrAlSiguiente: () -> Unit,
+    val alArrastrarFirma: (Float, Float) -> Unit,
+    val alRedimensionarFirma: (Float) -> Unit,
+    val alMoverAsa: (Boolean, PuntoPt) -> Unit,
+)
 
-    return Offset(
-        x = (scrollHorizontal.value + centro.x) * crecimiento,
-        y = if (pagina == null) 0f else (centro.y - pagina.offset) * crecimiento,
-    )
+/**
+ * Lo que se dibuja **encima** del papel de una página.
+ *
+ * Todos hablan en puntos de página y reciben el tamaño **sin girar**: van dentro de la
+ * caja que gira entera, así que ninguno tiene que enterarse de que la vista está de
+ * lado. Es la razón de que el giro se aplique a la caja y no al bitmap.
+ */
+@Composable
+private fun ContenidoDeLaPagina(
+    indice: Int,
+    caja: CajaDePagina,
+    estado: EstadoVisor,
+    campos: Map<Int, List<CampoFormulario>>,
+    tamanoDe: (Int) -> TamanoPt?,
+    firmaEnMano: ImageBitmap?,
+    acciones: AccionesSobreLaPagina,
+) {
+    val tamano = tamanoDe(indice) ?: return
+
+    val colocacion = estado.colocacion?.takeIf { it.pagina == indice }
+    if (colocacion != null && firmaEnMano != null) {
+        OverlayColocacion(
+            firma = firmaEnMano,
+            colocacion = colocacion,
+            tamano = tamano,
+            ancho = caja.ancho,
+            alto = caja.alto,
+            alArrastrar = acciones.alArrastrarFirma,
+            alRedimensionar = acciones.alRedimensionarFirma,
+        )
+    }
+
+    // El overlay sólo existe dentro del modo y sólo para las páginas que están a la
+    // vista: es el mismo trato perezoso que reciben los píxeles, y no hay nada que
+    // guardar al soltarlo porque los valores viven en el documento.
+    val delaPagina = campos[indice]
+    if (estado.modo == ModoVisor.Formulario && !delaPagina.isNullOrEmpty()) {
+        OverlayCampos(
+            campos = delaPagina,
+            tamano = tamano,
+            ancho = caja.ancho,
+            alto = caja.alto,
+            campoActivo = estado.campoActivo,
+            alTocarCampo = acciones.alTocarCampo,
+            alEscribir = acciones.alEscribirCampo,
+            hayCampoSiguiente = estado.hayCampoSiguiente,
+            alIrAlSiguiente = acciones.alIrAlSiguiente,
+        )
+    }
+
+    val enEstaPagina = estado.busqueda?.enLaPagina(indice).orEmpty()
+    if (enEstaPagina.isNotEmpty()) {
+        OverlayResaltados(
+            coincidencias = enEstaPagina.map { it.marco },
+            activa =
+                estado.busqueda
+                    ?.coincidencias
+                    ?.getOrNull(estado.busqueda.activa)
+                    ?.takeIf { it.pagina == indice }
+                    ?.marco,
+            tamano = tamano,
+            ancho = caja.ancho,
+            alto = caja.alto,
+        )
+    }
+
+    val seleccion = estado.seleccion?.takeIf { it.pagina == indice }
+    if (seleccion != null) {
+        OverlaySeleccion(
+            seleccion = seleccion,
+            tamano = tamano,
+            ancho = caja.ancho,
+            alto = caja.alto,
+            alMoverAsa = acciones.alMoverAsa,
+        )
+    }
 }
 
 /**
@@ -591,40 +904,68 @@ private fun mejorDisponible(
         ?.value
 }
 
+/**
+ * Una página, con el giro de la vista aplicado a la caja entera.
+ *
+ * El giro va en la caja de dentro y no en el bitmap por una razón que se paga cara si
+ * se olvida: los overlays —campos, firma en el aire, resaltados, selección— se colocan
+ * en puntos de página, y girar sólo la imagen los dejaría flotando donde el texto ya no
+ * está. Girando la caja, todo lo de dentro sigue cuadrado con el papel y sólo el hueco
+ * que ocupa en la pantalla cambia de forma.
+ */
 @Composable
 private fun PaginaDelDocumento(
     indice: Int,
     mapa: ImageBitmap?,
-    ancho: Dp,
-    alto: Dp,
+    caja: CajaDePagina,
+    giro: GiroDeVista,
     encima: @Composable () -> Unit = {},
 ) {
     Box(
         modifier =
             Modifier
-                .width(ancho)
-                .height(alto)
-                // El papel es papel en los dos temas: el documento nunca se oscurece.
-                .background(ColoresPapel.papel, RoundedCornerShape(2.dp))
+                .width(caja.anchoVisible)
+                .height(caja.altoVisible)
                 .testTag(tagPagina(indice)),
+        contentAlignment = Alignment.Center,
     ) {
-        if (mapa != null) {
-            Image(
-                bitmap = mapa,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(2.dp)),
-                contentScale = ContentScale.FillBounds,
-            )
+        Box(
+            modifier =
+                Modifier
+                    // `requiredSize` y no `size`: girada, la caja del papel es más ancha
+                    // que el hueco que ocupa, y dejarse recortar por él la aplastaría.
+                    .requiredSize(width = caja.ancho, height = caja.alto)
+                    .rotate(giro.grados)
+                    // El papel es papel en los dos temas: el documento nunca se oscurece.
+                    .background(ColoresPapel.papel, RoundedCornerShape(2.dp)),
+        ) {
+            if (mapa != null) {
+                Image(
+                    bitmap = mapa,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(2.dp)),
+                    contentScale = ContentScale.FillBounds,
+                )
+            }
+            encima()
         }
-        encima()
     }
 }
 
+/**
+ * El «3 / 12» que flota sobre el documento.
+ *
+ * Se calla sola mientras no hay documento: el visor se compone antes de que el motor
+ * conteste cuántas páginas tiene, y un «1 / 0» de medio segundo al abrir es de las
+ * cosas que se quedan grabadas.
+ */
 @Composable
 private fun PildoraPagina(
-    texto: String,
+    estado: EstadoVisor,
     modifier: Modifier = Modifier,
 ) {
+    if (estado.paginas <= 0) return
+
     Box(
         modifier =
             modifier
@@ -636,7 +977,7 @@ private fun PildoraPagina(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = texto,
+            text = "${estado.paginaActual + 1} / ${estado.paginas}",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
@@ -688,17 +1029,27 @@ private fun HojasDeFirmas(
     }
 }
 
-private const val PROPORCION_A4 = 842f / 595f
 private const val OPACIDAD_PILDORA = 0.92f
-private const val AJUSTE_ANCHO = 1f
 
-/** El «100 %» del doble toque: el doble del ajuste a ancho, que en A4 deja el texto legible. */
-private const val CIEN_POR_CIEN = 2f
+/** El zoom en reposo: la página tal como la deja el ajuste elegido, sin ampliar. */
+private const val SIN_ZOOM = 1f
+
+/** A donde lleva el doble toque: el doble del ajuste, que en A4 deja el texto legible. */
+private const val EL_DOBLE = 2f
 
 private const val ESPERA_TRAS_EL_GESTO_MS = 180L
 
 /** Lo que se deja de página por encima del campo enfocado: un tercio de la altura. */
 private const val MARGEN_SOBRE_EL_TECLADO = 0.33f
+
+/**
+ * A partir de este ancho se ofrecen dos páginas.
+ *
+ * Es el escalón que Material llama «medium», y aquí sale a unos 300 dp por página: por
+ * debajo, una A4 partida en dos deja el cuerpo de texto por debajo de lo legible y la
+ * doble página deja de ser una comodidad para ser un truco de escritorio mal traído.
+ */
+private val ANCHO_MINIMO_PARA_DOS = 600.dp
 
 const val TAG_LISTA = "visor_lista"
 const val TAG_PILDORA = "visor_pildora_pagina"

@@ -2,6 +2,8 @@ package com.marcmayol.dracpdf.ui.herramientas
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -35,78 +37,100 @@ import kotlin.math.roundToInt
  * destinos de verdad, que sí son distintos: un `.txt` es un fichero y las imágenes son
  * una por página, y por eso lo primero pide dónde guardar y lo segundo, en qué carpeta.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DialogoConvertir(
     paginas: Int,
     alElegirTexto: () -> Unit,
     alElegirImagenes: (List<Int>, AjustesImagen) -> Unit,
     alCancelar: () -> Unit,
+    alElegirDocumento: (DestinoDeConversion) -> Unit = {},
+    alElegirTablas: (DestinoDeTabla) -> Unit = {},
 ) {
-    var aImagenes by remember { mutableStateOf(false) }
+    var destino by remember { mutableStateOf(DestinoDeConversion.TEXTO) }
     var formato by remember { mutableStateOf(FormatoImagen.PNG) }
+    var tabla by remember { mutableStateOf(DestinoDeTabla.CSV) }
     var calidad by remember { mutableFloatStateOf(AjustesImagen.CALIDAD_POR_DEFECTO.toFloat()) }
     var escala by remember { mutableFloatStateOf(1f) }
     var texto by remember { mutableStateOf("1-$paginas") }
 
     val rangos = rangosDe(texto, paginas)
-    val puedeConvertir = !aImagenes || rangos != null
+    val puedeConvertir = destino != DestinoDeConversion.IMAGENES || rangos != null
 
     AlertDialog(
         onDismissRequest = alCancelar,
         title = { Text("Convertir a") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ChipLadon(
-                        texto = "Texto",
-                        elegido = !aImagenes,
-                        alPulsar = { aImagenes = false },
-                        tag = TAG_CONVERTIR_TEXTO,
-                    )
-                    ChipLadon(
-                        texto = "Imágenes",
-                        elegido = aImagenes,
-                        alPulsar = { aImagenes = true },
-                        tag = TAG_CONVERTIR_IMAGENES,
-                    )
+                // Una rejilla de chips y no una lista de radios: son ocho destinos
+                // cortos, y en un móvil ocho filas serían casi una pantalla entera de
+                // desplazamiento para elegir una palabra.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DestinoDeConversion.entries.forEach { candidato ->
+                        ChipLadon(
+                            texto = candidato.etiqueta,
+                            elegido = destino == candidato,
+                            alPulsar = { destino = candidato },
+                            tag = candidato.tag,
+                        )
+                    }
                 }
 
-                if (aImagenes) {
-                    AjustesDeImagen(
-                        paginas = paginas,
-                        formato = formato,
-                        calidad = calidad,
-                        escala = escala,
-                        texto = texto,
-                        rangoValido = rangos != null,
-                        alElegirFormato = { formato = it },
-                        alFijarCalidad = { calidad = it },
-                        alFijarEscala = { escala = it },
-                        alEscribirRangos = { texto = it },
-                    )
-                } else {
-                    Text(
-                        text =
-                            "Se guarda un fichero de texto con lo que el documento lleve escrito. " +
-                                "Un escaneado no lleva texto: si es el caso, se dirá.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 12.dp),
-                    )
+                Text(
+                    text = destino.explicacion,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 12.dp).testTag(TAG_CONVERTIR_EXPLICACION),
+                )
+
+                when (destino) {
+                    DestinoDeConversion.IMAGENES ->
+                        AjustesDeImagen(
+                            paginas = paginas,
+                            formato = formato,
+                            calidad = calidad,
+                            escala = escala,
+                            texto = texto,
+                            rangoValido = rangos != null,
+                            alElegirFormato = { formato = it },
+                            alFijarCalidad = { calidad = it },
+                            alFijarEscala = { escala = it },
+                            alEscribirRangos = { texto = it },
+                        )
+
+                    DestinoDeConversion.TABLAS ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(top = 8.dp),
+                        ) {
+                            DestinoDeTabla.entries.forEach { candidata ->
+                                ChipLadon(
+                                    texto = candidata.etiqueta,
+                                    elegido = tabla == candidata,
+                                    alPulsar = { tabla = candidata },
+                                    tag = candidata.tag,
+                                )
+                            }
+                        }
+
+                    else -> Unit
                 }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (aImagenes) {
+                    when (destino) {
+                        DestinoDeConversion.TEXTO -> alElegirTexto()
                         // El dominio cuenta desde cero y el usuario desde uno: la resta
                         // se hace aquí, en el único sitio que sabe de las dos cuentas.
-                        alElegirImagenes(
-                            rangos.orEmpty().flatMap { rango -> rango.map { it - 1 } }.distinct(),
-                            AjustesImagen(formato = formato, escala = escala, calidad = calidad.roundToInt()),
-                        )
-                    } else {
-                        alElegirTexto()
+                        DestinoDeConversion.IMAGENES ->
+                            alElegirImagenes(
+                                rangos.orEmpty().flatMap { rango -> rango.map { it - 1 } }.distinct(),
+                                AjustesImagen(formato = formato, escala = escala, calidad = calidad.roundToInt()),
+                            )
+
+                        DestinoDeConversion.TABLAS -> alElegirTablas(tabla)
+                        else -> alElegirDocumento(destino)
                     }
                 },
                 enabled = puedeConvertir,
@@ -206,6 +230,7 @@ private val ESCALAS = listOf(1f, 2f, 3f)
 
 const val TAG_DIALOGO_CONVERTIR = "dialogo_convertir"
 const val TAG_CONVERTIR_TEXTO = "convertir_a_texto"
+const val TAG_CONVERTIR_EXPLICACION = "convertir_explicacion"
 const val TAG_CONVERTIR_IMAGENES = "convertir_a_imagenes"
 const val TAG_CONVERTIR_CALIDAD = "convertir_calidad"
 const val TAG_CONVERTIR_PAGINAS = "convertir_paginas"

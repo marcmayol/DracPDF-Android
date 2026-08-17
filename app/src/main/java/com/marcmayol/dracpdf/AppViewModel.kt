@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
 import com.marcmayol.dracpdf.dominio.casos.CerrarDocumento
 import com.marcmayol.dracpdf.dominio.casos.FirmarDocumento
+import com.marcmayol.dracpdf.dominio.casos.RecordarDocumentos
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.modelo.ErrorDocumento
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
+import com.marcmayol.dracpdf.dominio.puertos.DocumentoReciente
 import com.marcmayol.dracpdf.dominio.registro.EstadoDocumento
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
 import com.marcmayol.dracpdf.ui.visor.aImageBitmap
@@ -49,7 +51,24 @@ class AppViewModel(
     private val registro: RegistroDocumentos,
     private val renderizarPagina: RenderizarPagina? = null,
     private val firmarDocumento: FirmarDocumento? = null,
+    private val recordar: RecordarDocumentos? = null,
 ) : ViewModel() {
+    private val _recientes = MutableStateFlow<List<DocumentoReciente>>(emptyList())
+
+    /** Los documentos por los que se pasó, para la pantalla de inicio. */
+    val recientes: StateFlow<List<DocumentoReciente>> = _recientes.asStateFlow()
+
+    private val _efimeros = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * Los documentos abiertos con un permiso que muere con la sesión: los que llegan
+     * compartidos desde otra aplicación.
+     *
+     * La aplicación tiene que tratarlos distinto —ofrecer «guardar una copia» en vez
+     * de dejar creer que ese documento va a seguir ahí mañana— y por eso se recuerda
+     * cuáles son, por identificador.
+     */
+    val efimeros: StateFlow<Set<String>> = _efimeros.asStateFlow()
     private val _estado = MutableStateFlow<EstadoApp>(EstadoApp.Inicio)
     val estado: StateFlow<EstadoApp> = _estado.asStateFlow()
 
@@ -71,6 +90,7 @@ class AppViewModel(
     fun abrir(
         origen: OrigenDocumento,
         contrasena: String? = null,
+        permisoPersistido: Boolean = false,
     ) {
         viewModelScope.launch {
             // Abrir toca disco y el motor nativo: nunca en el hilo de la interfaz,
@@ -86,7 +106,15 @@ class AppViewModel(
                         // de alguien.
                         withContext(Dispatchers.IO) {
                             runCatching { firmarDocumento?.marcarSiEstaFirmado(abierto.id) }
+                            // Apuntar el reciente **restaura por dónde iba**, así que
+                            // tiene que pasar antes de que la pantalla lo enseñe: si no,
+                            // el visor abriría por la primera página y saltaría después.
+                            runCatching {
+                                recordar?.alAbrir(abierto.id, origen, abierto.documento.nombre, permisoPersistido)
+                            }
                         }
+                        refrescarRecientes()
+                        if (!permisoPersistido) _efimeros.value = _efimeros.value + abierto.id.valor
                         EstadoApp.Viendo(abierto.id)
                     },
                     onFailure = { fallo -> estadoDelFallo(origen, contrasena, fallo) },
@@ -113,7 +141,13 @@ class AppViewModel(
     fun cerrar(id: IdDocumento) {
         viewModelScope.launch {
             val eraElActivo = (_estado.value as? EstadoApp.Viendo)?.id == id
-            withContext(Dispatchers.IO) { runCatching { cerrarDocumento(id) } }
+            withContext(Dispatchers.IO) {
+                // Antes de cerrarlo, mientras todavía se le puede preguntar por dónde
+                // iba: después, el documento ya no existe para nadie.
+                runCatching { recordar?.alCerrar(id) }
+                runCatching { cerrarDocumento(id) }
+            }
+            refrescarRecientes()
             refrescarAbiertos()
 
             if (eraElActivo) {
@@ -126,10 +160,33 @@ class AppViewModel(
     fun cerrarTodos() {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                registro.abiertos().forEach { runCatching { cerrarDocumento(it.id) } }
+                registro.abiertos().forEach { abierto ->
+                    runCatching { recordar?.alCerrar(abierto.id) }
+                    runCatching { cerrarDocumento(abierto.id) }
+                }
             }
             refrescarAbiertos()
+            refrescarRecientes()
             _estado.value = EstadoApp.Inicio
+        }
+    }
+
+    /** Trae los recientes del disco a la interfaz. */
+    fun refrescarRecientes() {
+        val almacen = recordar ?: return
+        viewModelScope.launch {
+            _recientes.value =
+                withContext(Dispatchers.IO) { runCatching { almacen.listar() }.getOrDefault(emptyList()) }
+        }
+    }
+
+    /** Quita un documento de la lista de recientes. No lo borra del teléfono. */
+    fun olvidarReciente(identificador: String) {
+        val almacen = recordar ?: return
+        viewModelScope.launch {
+            val victima = _recientes.value.firstOrNull { it.origen.identificador == identificador } ?: return@launch
+            withContext(Dispatchers.IO) { runCatching { almacen.olvidar(victima.origen) } }
+            refrescarRecientes()
         }
     }
 

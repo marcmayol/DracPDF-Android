@@ -6,12 +6,14 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.marcmayol.dracpdf.adaptadores.firmas.AlmacenFirmasFichero
 import com.marcmayol.dracpdf.adaptadores.fixtures.GeneradorFixtures
+import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfContenido
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfDocumentRepository
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfFormService
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfStampService
 import com.marcmayol.dracpdf.adaptadores.mupdf.SesionesMuPdf
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
+import com.marcmayol.dracpdf.dominio.casos.BuscarEnDocumento
 import com.marcmayol.dracpdf.dominio.casos.EstamparFirma
 import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
@@ -53,6 +55,7 @@ class VisorRendimientoTest {
         val fuente = FuenteDocumentosAndroid(contexto.contentResolver)
         val sesiones = SesionesMuPdf(fuente)
         val repositorio = MuPdfDocumentRepository(sesiones, fuente)
+        val contenido = MuPdfContenido(sesiones, fuente)
         val registro = RegistroDocumentos()
         val abrir = AbrirDocumento(repositorio, registro)
 
@@ -77,6 +80,9 @@ class VisorRendimientoTest {
                         repositorio,
                         registro,
                     ),
+                    BuscarEnDocumento(contenido),
+                    contenido,
+                    contenido,
                 ),
                 registro,
                 cache,

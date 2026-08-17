@@ -32,6 +32,11 @@
                 Abrir un PDF desde otra aplicación: el explorador de archivos, el
                 correo, el navegador. El filtro por tipo se declara para content:// y
                 file:// porque no todos los proveedores usan el mismo esquema.
+
+                Este filtro es el que decide si el selector del sistema ofrece
+                «Siempre»: para poder ser el lector predeterminado hay que declarar el
+                tipo con su esquema y la categoría DEFAULT, que es lo que Android
+                entiende por «esta aplicación sabe abrir esto».
             -->
             <intent-filter android:label="@string/app_nombre">
                 <action android:name="android.intent.action.VIEW" />
@@ -39,6 +44,33 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" android:mimeType="application/pdf" />
                 <data android:scheme="file" android:mimeType="application/pdf" />
+            </intent-filter>
+
+            <!--
+                Los PDF que llegan sin tipo declarado.
+
+                Pasa más de lo que debería: hay descargas y adjuntos que viajan como
+                «application/octet-stream» o directamente sin tipo, y el nombre del
+                fichero es la única pista. Por eso aquí sí se mira la extensión, y sólo
+                aquí: en el filtro de arriba sería redundante y capturaría documentos
+                cuyo tipo ya viene bien declarado.
+
+                Los cuatro patrones son la forma fea pero necesaria de escribir «acaba
+                en .pdf» en un manifest: `pathPattern` no tiene cuantificadores, así
+                que hay que repetir el comodín para las rutas con puntos por medio.
+            -->
+            <intent-filter android:label="@string/app_nombre">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.pdf" />
+                <data android:pathPattern=".*\\..*\\.pdf" />
+                <data android:pathPattern=".*\\..*\\..*\\.pdf" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.pdf" />
             </intent-filter>
 
             <!-- Recibir un PDF por el menú de compartir. -->

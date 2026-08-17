@@ -27,4 +27,18 @@ sealed interface ModoVisor {
      * se confirma. Hasta que se confirma, el documento no se ha tocado.
      */
     data object ColocarFirma : ModoVisor
+
+    /**
+     * Buscar en el documento. Es un modo y no una barra flotante porque mientras dura
+     * cambia lo que hacen las páginas: se pintan resaltados encima y el chrome deja de
+     * esconderse al tocar, que es lo que haría desaparecer el campo de búsqueda justo
+     * al ir a leer el resultado.
+     */
+    data object Buscar : ModoVisor
+
+    /**
+     * Texto seleccionado con el dedo, con sus asas y sus acciones. Sale del gesto
+     * largo sobre una palabra y se va al tocar fuera.
+     */
+    data object SeleccionarTexto : ModoVisor
 }

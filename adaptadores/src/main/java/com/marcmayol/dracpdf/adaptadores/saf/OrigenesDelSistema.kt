@@ -53,6 +53,23 @@ object OrigenesDelSistema {
         return de(resolver, uri)
     }
 
+    /**
+     * Si el permiso que trae este intent sobrevive a la sesión.
+     *
+     * Sólo lo concede el selector de documentos del sistema. Lo que llega de WhatsApp
+     * o de Gmail viene con un permiso que muere cuando muere el proceso, y **pedir que
+     * se persista sin que el intent lo ofrezca lanza `SecurityException`**: por eso se
+     * pregunta antes en vez de intentarlo y recoger los cristales.
+     *
+     * La diferencia importa más allá del permiso: un documento efímero no se puede
+     * guardar sobre sí mismo ni prometer que mañana estará, y la aplicación tiene que
+     * ofrecer «guardar una copia» en vez de fingir que es un documento normal.
+     */
+    fun permisoPersistibleDe(intent: Intent?): Boolean {
+        val banderas = intent?.flags ?: return false
+        return banderas and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION != 0
+    }
+
     @Suppress("DEPRECATION")
     private fun Intent.extraStream(): Uri? =
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {

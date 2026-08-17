@@ -1,9 +1,11 @@
 package com.marcmayol.dracpdf
 
+import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -32,17 +34,26 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.marcmayol.dracpdf.adaptadores.impresion.ImpresionPdf
+import com.marcmayol.dracpdf.adaptadores.saf.AjustesDelSistema
 import com.marcmayol.dracpdf.adaptadores.saf.OrigenesDelSistema
 import com.marcmayol.dracpdf.dominio.casos.AvisosDeHerramienta
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
 import com.marcmayol.dracpdf.dominio.puertos.AjustesImagen
+import com.marcmayol.dracpdf.dominio.puertos.DocumentoReciente
+import com.marcmayol.dracpdf.dominio.puertos.EntradaAConvertir
 import com.marcmayol.dracpdf.dominio.puertos.PaginaOrdenada
+import com.marcmayol.dracpdf.dominio.puertos.TipoDeEntrada
 import com.marcmayol.dracpdf.dominio.registro.EstadoDocumento
+import com.marcmayol.dracpdf.ui.ajustes.HojaAjustes
+import com.marcmayol.dracpdf.ui.compartir.Compartir
 import com.marcmayol.dracpdf.ui.documentos.DocumentoEnLista
 import com.marcmayol.dracpdf.ui.documentos.HojaDocumentos
 import com.marcmayol.dracpdf.ui.firmas.FirmasViewModel
 import com.marcmayol.dracpdf.ui.herramientas.CasosDeHerramientas
+import com.marcmayol.dracpdf.ui.herramientas.DestinoDeConversion
+import com.marcmayol.dracpdf.ui.herramientas.DestinoDeTabla
 import com.marcmayol.dracpdf.ui.herramientas.DialogoAvisos
 import com.marcmayol.dracpdf.ui.herramientas.DialogoContrasena
 import com.marcmayol.dracpdf.ui.herramientas.DialogoConvertir
@@ -54,6 +65,7 @@ import com.marcmayol.dracpdf.ui.herramientas.HojaOrganizar
 import com.marcmayol.dracpdf.ui.herramientas.HojaProgreso
 import com.marcmayol.dracpdf.ui.inicio.HojaContrasena
 import com.marcmayol.dracpdf.ui.inicio.PantallaInicio
+import com.marcmayol.dracpdf.ui.inicio.RecienteEnLista
 import com.marcmayol.dracpdf.ui.tema.HojaTema
 import com.marcmayol.dracpdf.ui.tema.PreferenciaTema
 import com.marcmayol.dracpdf.ui.tema.TemaDracPDF
@@ -127,6 +139,7 @@ private fun AplicacionDracPDFUi(
     val resolver = remember { contexto.contentResolver }
     val preferenciaTema by tema.preferencia.collectAsStateWithLifecycle()
     var temaAbierto by remember { mutableStateOf(false) }
+    var ajustesAbiertos by remember { mutableStateOf(false) }
 
     val appModelo: AppViewModel = viewModel(factory = fabricaDe(grafo))
     val visorModelo: VisorViewModel = viewModel(factory = fabricaDe(grafo))
@@ -139,15 +152,21 @@ private fun AplicacionDracPDFUi(
     // de índice y la de organizar, y las dibuja el mismo modelo para no rasterizar dos
     // veces lo mismo.
     val miniaturasDelVisor by visorModelo.miniaturas.collectAsStateWithLifecycle()
+    val recientes by appModelo.recientes.collectAsStateWithLifecycle()
+
+    // La lista se trae al entrar y cada vez que se vuelve al inicio: es lo que hace que
+    // un documento cerrado hace un segundo ya aparezca ahí.
+    LaunchedEffect(Unit) { appModelo.refrescarRecientes() }
     var documentosAbiertosVisible by remember { mutableStateOf(false) }
 
     val selector =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
             uri?.let {
                 // Se pide el permiso permanente antes de abrir: si el proveedor lo
-                // concede, mañana el documento seguirá abriéndose desde recientes.
-                OrigenesDelSistema.recordarPermiso(resolver, it)
-                appModelo.abrir(OrigenesDelSistema.de(resolver, it))
+                // concede, mañana el documento seguirá abriéndose desde recientes. Y si
+                // no lo concede, el reciente se apunta sabiendo que puede no abrir.
+                val permanente = OrigenesDelSistema.recordarPermiso(resolver, it)
+                appModelo.abrir(OrigenesDelSistema.de(resolver, it), permisoPersistido = permanente)
             }
         }
 
@@ -191,12 +210,19 @@ private fun AplicacionDracPDFUi(
             if (arbol != null && id != null) {
                 convertirEnLaCarpeta(
                     modelo = herramientasModelo,
-                    origen = grafo.repositorio.origenDe(id),
+                    documento =
+                        DocumentoEnCurso(
+                            id = id,
+                            origen = grafo.repositorio.origenDe(id),
+                            nombreBase = grafo.nombreDelDocumento(id).substringBeforeLast('.', "documento"),
+                        ),
                     carpeta = OrigenesDelSistema.carpetaDe(resolver, arbol),
                     pedido = pedido,
                 )
             }
         }
+
+    val selectorParaConvertir = recordarCreacionDePdf(resolver, herramientasModelo)
 
     val selectorParaUnir =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
@@ -209,13 +235,11 @@ private fun AplicacionDracPDFUi(
 
     // Un documento que llega de fuera: del explorador de archivos, del correo, o del
     // menú de compartir de cualquier aplicación.
-    LaunchedEffect(intentInicial) {
-        OrigenesDelSistema.delIntent(resolver, intentInicial)?.let(appModelo::abrir)
-    }
+    LaunchedEffect(intentInicial) { abrirLoQueTrae(intentInicial, resolver, appModelo) }
     LaunchedEffect(Unit) {
         MainActivity.intentPendiente?.let { pendiente ->
             MainActivity.intentPendiente = null
-            OrigenesDelSistema.delIntent(resolver, pendiente)?.let(appModelo::abrir)
+            abrirLoQueTrae(pendiente, resolver, appModelo)
         }
     }
 
@@ -250,6 +274,16 @@ private fun AplicacionDracPDFUi(
             ),
     )
 
+    if (ajustesAbiertos) {
+        HojaAjustes(
+            // Ninguna aplicación puede hacerse predeterminada a sí misma: lo más lejos
+            // que se puede llegar es dejar al usuario donde el sistema sí lo decide.
+            alAbrirAjustesDelSistema = { AjustesDelSistema.abrirDeEstaAplicacion(contexto) },
+            alCerrar = { ajustesAbiertos = false },
+            esElPredeterminado = AjustesDelSistema.somosElLectorPorDefecto(contexto),
+        )
+    }
+
     HojasSueltas(
         trabajo = trabajo,
         temaAbierto = temaAbierto,
@@ -265,6 +299,8 @@ private fun AplicacionDracPDFUi(
             PantallaInicio(
                 alAbrirPdf = { selector.launch(arrayOf(TIPO_PDF)) },
                 alAbrirTema = { temaAbierto = true },
+                alAbrirAjustes = { ajustesAbiertos = true },
+                alCrearPdf = { selectorParaConvertir.launch(TipoDeEntrada.MIMES_ACEPTADOS.toTypedArray()) },
                 abiertos =
                     abiertos.map {
                         it.aDocumentoEnLista(
@@ -274,6 +310,13 @@ private fun AplicacionDracPDFUi(
                     },
                 alElegirAbierto = { id -> appModelo.cambiarA(IdDocumento(id)) },
                 alCerrarAbierto = { id -> appModelo.cerrar(IdDocumento(id)) },
+                recientes = recientes.map { it.aRecienteEnLista() },
+                alElegirReciente = { identificador ->
+                    recientes.firstOrNull { it.origen.identificador == identificador }?.let {
+                        appModelo.abrir(it.origen, permisoPersistido = it.permisoPersistido)
+                    }
+                },
+                alOlvidarReciente = appModelo::olvidarReciente,
             )
 
         is EstadoApp.PidiendoContrasena -> {
@@ -306,6 +349,19 @@ private fun AplicacionDracPDFUi(
                     )
                 },
                 firmas = firmasModelo,
+                alImprimir = {
+                    ImpresionPdf.lanzar(
+                        contexto,
+                        ImpresionPdf(
+                            nombre = nombreDelAbierto,
+                            paginas = grafo.paginasDelDocumento(actual.id),
+                            ficheroDe = { paginas -> grafo.paraImprimir(actual.id, paginas) },
+                        ),
+                    )
+                },
+                alCompartirDocumento = {
+                    Compartir.documento(contexto, grafo.repositorio.origenDe(actual.id), nombreDelAbierto)
+                },
             )
 
             if (documentosAbiertosVisible) {
@@ -374,6 +430,56 @@ private fun Grafo.nombreDelDocumento(id: IdDocumento?): String =
                 .estado(it)
                 .documento.nombre
         }.orEmpty()
+
+/**
+ * Traduce un reciente del dominio a lo que enseña el inicio.
+ *
+ * Lo de «hace un rato» se calcula aquí y no en el composable: es una cuenta que
+ * depende del reloj, y dentro de la composición se rehace en cada recomposición sin
+ * que nadie se lo haya pedido.
+ */
+private fun DocumentoReciente.aRecienteEnLista(): RecienteEnLista =
+    RecienteEnLista(
+        identificador = origen.identificador,
+        nombre = nombre,
+        cuando = haceCuanto(visto),
+        // La página sólo se enseña si se dejó empezado: decir «pág. 1» de todo lo que
+        // se ha abierto alguna vez es ruido.
+        porDonde = if (pagina > 0) "pág. ${pagina + 1}" else null,
+        puedeQueNoAbra = !permisoPersistido,
+    )
+
+/**
+ * Abre el documento que trae un intent, sabiendo con qué permiso llega.
+ *
+ * El permiso se pregunta **antes** de intentar quedárselo: sólo el selector de
+ * documentos lo concede para siempre, y pedirlo sobre un envío de WhatsApp lanza
+ * `SecurityException`. Lo que llega sin permiso duradero se abre igual, pero la
+ * aplicación sabe que es prestado y podrá ofrecer guardar una copia en vez de dejar
+ * creer que ese documento seguirá ahí mañana.
+ */
+private fun abrirLoQueTrae(
+    intent: Intent?,
+    resolver: ContentResolver,
+    modelo: AppViewModel,
+) {
+    val origen = OrigenesDelSistema.delIntent(resolver, intent) ?: return
+    val persistible =
+        OrigenesDelSistema.permisoPersistibleDe(intent) &&
+            OrigenesDelSistema.recordarPermiso(resolver, Uri.parse(origen.identificador))
+    modelo.abrir(origen, permisoPersistido = persistible)
+}
+
+private fun haceCuanto(cuando: Long): String {
+    val minutos = (System.currentTimeMillis() - cuando) / MILIS_POR_MINUTO
+    return when {
+        minutos < MINUTOS_DE_UN_RATO -> "hace un momento"
+        minutos < MINUTOS_POR_HORA -> "hace $minutos min"
+        minutos < MINUTOS_POR_DIA -> "hace ${minutos / MINUTOS_POR_HORA} h"
+        minutos < MINUTOS_POR_SEMANA -> "hace ${minutos / MINUTOS_POR_DIA} días"
+        else -> "hace ${minutos / MINUTOS_POR_SEMANA} semanas"
+    }
+}
 
 /** Traduce lo que sabe el registro a lo que necesita la lista de la interfaz. */
 private fun EstadoDocumento.aDocumentoEnLista(
@@ -517,21 +623,78 @@ private fun ejecutarConDestino(
 }
 
 /**
- * Escribe las imágenes en la carpeta elegida.
+ * Los dos selectores de crear un PDF desde otros ficheros, montados juntos.
  *
- * Vive fuera de la pantalla porque es la vuelta de un selector del sistema, igual que
- * el de guardar: cuando el usuario regresa hay que recomponer qué se había pedido, y
- * si falta algo no se hace nada en vez de inventárselo.
+ * Son dos idas y vueltas encadenadas —primero qué se convierte, después dónde se
+ * guarda— y viven aquí fuera para que la pantalla no tenga que llevar la cuenta de lo
+ * elegido entre una y otra.
  */
+@Composable
+private fun recordarCreacionDePdf(
+    resolver: ContentResolver,
+    modelo: HerramientasViewModel,
+): ManagedActivityResultLauncher<Array<String>, List<Uri>> {
+    var elegidos by remember { mutableStateOf<List<EntradaAConvertir>>(emptyList()) }
+
+    val destino =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(TIPO_PDF)) { uri: Uri? ->
+            val entradas = elegidos
+            elegidos = emptyList()
+            if (uri != null && entradas.isNotEmpty()) {
+                modelo.crearPdfDesde(entradas, OrigenDocumento.Externo(uri.toString(), nombreDeUri(uri)))
+            }
+        }
+
+    return rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
+        // Lo que el sistema no sepa clasificar se queda fuera aquí y no a mitad de la
+        // conversión: es la diferencia entre «esto no lo sé convertir» y un PDF al que
+        // le faltan páginas sin decir por qué.
+        val entradas =
+            uris.mapNotNull { uri ->
+                val nombre = OrigenesDelSistema.nombreDe(resolver, uri)
+                TipoDeEntrada.de(nombre, resolver.getType(uri))?.let { tipo ->
+                    EntradaAConvertir(OrigenDocumento.Externo(uri.toString(), nombre), tipo)
+                }
+            }
+        if (entradas.isNotEmpty()) {
+            elegidos = entradas
+            destino.launch("documento.pdf")
+        }
+    }
+}
+
+/**
+ * El documento sobre el que se está convirtiendo, con las tres cosas que hacen falta:
+ * quién es para el motor, de dónde salió y cómo llamar a lo que se escriba.
+ */
+private data class DocumentoEnCurso(
+    val id: IdDocumento,
+    val origen: OrigenDocumento,
+    val nombreBase: String,
+)
+
 private fun convertirEnLaCarpeta(
     modelo: HerramientasViewModel,
-    origen: OrigenDocumento,
+    documento: DocumentoEnCurso,
     carpeta: OrigenDocumento,
     pedido: LoPedido,
 ) {
-    val paginas = pedido.paginasDeImagen ?: return
-    val ajustes = pedido.ajustesDeImagen ?: return
-    modelo.convertirAImagenes(origen = origen, paginas = paginas, carpeta = carpeta, ajustes = ajustes)
+    val (id, origen, nombreBase) = documento
+    when (pedido.destinoDeConversion) {
+        // Las tablas y los documentos de texto trabajan sobre el documento abierto:
+        // hace falta su estructura deducida, no sus bytes.
+        DestinoDeConversion.TABLAS ->
+            pedido.formatoDeTabla?.let { modelo.convertirTablas(id, it.formato, carpeta, nombreBase) }
+
+        null, DestinoDeConversion.TEXTO, DestinoDeConversion.WORD, DestinoDeConversion.IMAGENES -> {
+            val paginas = pedido.paginasDeImagen ?: return
+            val ajustes = pedido.ajustesDeImagen ?: return
+            modelo.convertirAImagenes(origen = origen, paginas = paginas, carpeta = carpeta, ajustes = ajustes)
+        }
+
+        else ->
+            pedido.destinoDeConversion.formato?.let { modelo.convertirDocumentoA(id, it, carpeta, nombreBase) }
+    }
 }
 
 /**
@@ -550,6 +713,9 @@ private data class LoPedido(
     val orden: List<PaginaOrdenada>? = null,
     val paginasDeImagen: List<Int>? = null,
     val ajustesDeImagen: AjustesImagen? = null,
+    /** A qué formato se convierte, cuando no es ni texto ni imágenes. */
+    val destinoDeConversion: DestinoDeConversion? = null,
+    val formatoDeTabla: DestinoDeTabla? = null,
 )
 
 /**
@@ -599,6 +765,27 @@ private fun FlujosDeHerramienta(
                 alElegirImagenes = { paginas, ajustes ->
                     acciones.alDejarDePreguntar()
                     acciones.alRecoger { it.copy(paginasDeImagen = paginas, ajustesDeImagen = ajustes) }
+                    acciones.alPedirCarpeta()
+                },
+                // HTML, Markdown, ODT, RTF y las tablas escriben en una carpeta: unas
+                // tablas son varios ficheros, y pedir un nombre para «el fichero» sería
+                // mentir sobre lo que va a salir.
+                alElegirDocumento = { destino ->
+                    acciones.alDejarDePreguntar()
+                    acciones.alRecoger { it.copy(destinoDeConversion = destino) }
+                    if (destino.vaACarpeta) {
+                        acciones.alPedirCarpeta()
+                    } else {
+                        acciones.alPedirDestino(
+                            Herramienta.CONVERTIR,
+                        )
+                    }
+                },
+                alElegirTablas = { formato ->
+                    acciones.alDejarDePreguntar()
+                    acciones.alRecoger {
+                        it.copy(destinoDeConversion = DestinoDeConversion.TABLAS, formatoDeTabla = formato)
+                    }
                     acciones.alPedirCarpeta()
                 },
                 alCancelar = acciones.alDejarDePreguntar,
@@ -715,6 +902,7 @@ private fun fabricaDe(grafo: Grafo) =
                         grafo.registro,
                         grafo.renderizarPagina,
                         grafo.firmarDocumento,
+                        grafo.recordarDocumentos,
                     ) as T
 
                 clase.isAssignableFrom(FirmasViewModel::class.java) ->
@@ -733,6 +921,8 @@ private fun fabricaDe(grafo: Grafo) =
                             desproteger = grafo.desprotegerDocumento,
                             comprimir = grafo.comprimirDocumento,
                             convertir = grafo.convertirDocumento,
+                            convertirEstructura = grafo.convertirEstructura,
+                            crearPdf = grafo.convertirAPdf,
                         ),
                         grafo.revisarAntesDeOperar,
                     ) as T
@@ -742,6 +932,9 @@ private fun fabricaDe(grafo: Grafo) =
                         grafo.casosDelVisor,
                         grafo.registro,
                         grafo.cachePaginas,
+                        // Sin esto la vista elegida funciona pero no sobrevive a cerrar
+                        // la aplicación, que es justo lo que la fase promete.
+                        ajustes = grafo.ajustesDeInterfaz,
                     ) as T
 
                 else -> error("No sé construir ${clase.name}")
@@ -749,5 +942,11 @@ private fun fabricaDe(grafo: Grafo) =
     }
 
 private const val TIPO_PDF = "application/pdf"
+
+private const val MILIS_POR_MINUTO = 60_000L
+private const val MINUTOS_DE_UN_RATO = 2
+private const val MINUTOS_POR_HORA = 60
+private const val MINUTOS_POR_DIA = 60 * 24
+private const val MINUTOS_POR_SEMANA = 60 * 24 * 7
 
 const val TAG_ERROR_APERTURA = "apertura_error"

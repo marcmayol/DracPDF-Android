@@ -4,16 +4,23 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marcmayol.dracpdf.dominio.casos.AvisosDeHerramienta
 import com.marcmayol.dracpdf.dominio.casos.ComprimirDocumento
+import com.marcmayol.dracpdf.dominio.casos.ConvertirAPdf
 import com.marcmayol.dracpdf.dominio.casos.ConvertirDocumento
+import com.marcmayol.dracpdf.dominio.casos.ConvertirEstructura
 import com.marcmayol.dracpdf.dominio.casos.DesprotegerDocumento
 import com.marcmayol.dracpdf.dominio.casos.DividirDocumento
 import com.marcmayol.dracpdf.dominio.casos.OrganizarPaginas
 import com.marcmayol.dracpdf.dominio.casos.ProtegerDocumento
+import com.marcmayol.dracpdf.dominio.casos.ResultadoConversion
 import com.marcmayol.dracpdf.dominio.casos.RevisarAntesDeOperar
 import com.marcmayol.dracpdf.dominio.casos.UnirDocumentos
 import com.marcmayol.dracpdf.dominio.modelo.ErrorDocumento
+import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
 import com.marcmayol.dracpdf.dominio.puertos.AjustesImagen
+import com.marcmayol.dracpdf.dominio.puertos.EntradaAConvertir
+import com.marcmayol.dracpdf.dominio.puertos.FormatoSalida
+import com.marcmayol.dracpdf.dominio.puertos.FormatoTabla
 import com.marcmayol.dracpdf.dominio.puertos.PaginaOrdenada
 import com.marcmayol.dracpdf.dominio.puertos.Progreso
 import kotlinx.coroutines.CoroutineDispatcher
@@ -46,6 +53,10 @@ class CasosDeHerramientas(
     val desproteger: DesprotegerDocumento,
     val comprimir: ComprimirDocumento,
     val convertir: ConvertirDocumento,
+    /** Las conversiones de la Fase 9: HTML, Markdown, ODT, RTF y tablas. */
+    val convertirEstructura: ConvertirEstructura,
+    /** La conversión al revés: de imágenes y textos sueltos a un PDF nuevo. */
+    val crearPdf: ConvertirAPdf,
 )
 
 /** Por dónde va una operación larga, para enseñarlo y poder pararla. */
@@ -71,7 +82,12 @@ data class EstadoHerramienta(
  * honesta de enseñar progreso: dos barras compitiendo por la misma pantalla no dicen
  * nada, y dos herramientas escribiendo a la vez sobre los mismos ficheros son un
  * problema mucho peor que una espera.
+ *
+ * Una función por herramienta y por destino de conversión. Son muchas porque la caja de
+ * herramientas tiene muchas cosas dentro, y agruparlas en una sola con un parámetro
+ * «qué hacer» escondería justo lo que aquí se lee de un vistazo: qué se puede pedir.
  */
+@Suppress("TooManyFunctions")
 class HerramientasViewModel(
     private val casos: CasosDeHerramientas,
     // Va suelto y no en el bulto: revisar no es una operación, es lo que se consulta
@@ -174,6 +190,79 @@ class HerramientasViewModel(
     ) = enMarcha(Herramienta.CONVERTIR) { progreso ->
         val escritas = casos.convertir.aImagenes(origen, paginas, carpeta, ajustes, progreso)
         "${escritas.size} imágenes"
+    }
+
+    /**
+     * Convierte el documento **abierto** a otro formato de texto.
+     *
+     * Trabaja sobre el documento de la sesión y no sobre el fichero, al revés que el
+     * resto de herramientas: deducir títulos y tablas necesita el documento ya
+     * analizado por el motor, y volver a abrirlo desde el disco sería recorrerlo dos
+     * veces para llegar a lo mismo.
+     */
+    fun convertirDocumentoA(
+        id: IdDocumento,
+        formato: FormatoSalida,
+        carpeta: OrigenDocumento,
+        nombreBase: String,
+    ) = enMarcha(Herramienta.CONVERTIR) { progreso ->
+        val estructura = casos.convertirEstructura.leer(id, progreso)
+        contar(casos.convertirEstructura.aDocumento(estructura, formato, carpeta, nombreBase))
+    }
+
+    /** Las tablas del documento, a CSV o a XLSX. */
+    fun convertirTablas(
+        id: IdDocumento,
+        formato: FormatoTabla,
+        carpeta: OrigenDocumento,
+        nombreBase: String,
+    ) = enMarcha(Herramienta.CONVERTIR) { progreso ->
+        val estructura = casos.convertirEstructura.leer(id, progreso)
+        contar(casos.convertirEstructura.aTablas(estructura, formato, carpeta, nombreBase))
+    }
+
+    /**
+     * Lo que hay que decir de una conversión.
+     *
+     * Los dos «no» se cuentan como resultados y no como errores porque no lo son: un
+     * escaneado y un documento sin tablas están bien, y lo único que pasa es que no
+     * había nada que escribir.
+     */
+    private fun contar(resultado: ResultadoConversion): String =
+        when (resultado) {
+            is ResultadoConversion.Escrito ->
+                if (resultado.ficheros.size == 1) {
+                    "Guardado en «${nombreDe(resultado.ficheros.single())}»"
+                } else {
+                    "${resultado.ficheros.size} ficheros guardados"
+                }
+
+            ResultadoConversion.PareceEscaneado -> "Este documento no tiene texto: parece escaneado"
+            ResultadoConversion.SinTablas -> "No se ha encontrado ninguna tabla que exportar"
+        }
+
+    private fun nombreDe(origen: OrigenDocumento) =
+        when (origen) {
+            is OrigenDocumento.Externo -> origen.nombre
+            is OrigenDocumento.Privado -> origen.nombre
+        }
+
+    /**
+     * Monta un PDF con lo que se le dé: imágenes, Markdown, HTML o texto.
+     *
+     * Es la conversión al revés que las demás, y la única que no parte de un documento
+     * abierto: aquí no hay PDF todavía, se está haciendo uno.
+     */
+    fun crearPdfDesde(
+        entradas: List<EntradaAConvertir>,
+        destino: OrigenDocumento,
+    ) = enMarcha(Herramienta.CONVERTIR) { progreso ->
+        val paginas = casos.crearPdf.invoke(entradas, destino, progreso)
+        if (paginas == 0) {
+            "No había nada que convertir"
+        } else {
+            "PDF creado con $paginas ${if (paginas == 1) "página" else "páginas"}"
+        }
     }
 
     fun convertirATexto(

@@ -87,6 +87,12 @@ class SalidasDeHerramienta(
             "webp" -> "image/webp"
             "txt" -> "text/plain"
             "pdf" -> "application/pdf"
+            "html" -> "text/html"
+            "md" -> "text/markdown"
+            "csv" -> "text/csv"
+            "rtf" -> "application/rtf"
+            "odt" -> "application/vnd.oasis.opendocument.text"
+            "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             else -> "application/octet-stream"
         }
 }

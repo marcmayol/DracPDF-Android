@@ -3,20 +3,32 @@ package com.marcmayol.dracpdf.ui.visor
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.marcmayol.dracpdf.adaptadores.ajustes.AjustesDeInterfaz
+import com.marcmayol.dracpdf.dominio.casos.BuscarEnDocumento
 import com.marcmayol.dracpdf.dominio.casos.EstamparFirma
 import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
 import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
+import com.marcmayol.dracpdf.dominio.modelo.Coincidencia
+import com.marcmayol.dracpdf.dominio.modelo.DestinoEnlace
+import com.marcmayol.dracpdf.dominio.modelo.EnlacePagina
+import com.marcmayol.dracpdf.dominio.modelo.EntradaIndice
 import com.marcmayol.dracpdf.dominio.modelo.ErrorDocumento
 import com.marcmayol.dracpdf.dominio.modelo.Firma
 import com.marcmayol.dracpdf.dominio.modelo.Formulario
 import com.marcmayol.dracpdf.dominio.modelo.IdCampo
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
+import com.marcmayol.dracpdf.dominio.modelo.PropiedadesDocumento
+import com.marcmayol.dracpdf.dominio.modelo.PuntoPt
 import com.marcmayol.dracpdf.dominio.modelo.RectPt
+import com.marcmayol.dracpdf.dominio.modelo.SeleccionTexto
 import com.marcmayol.dracpdf.dominio.modelo.TamanoPt
+import com.marcmayol.dracpdf.dominio.modelo.TipoCampo
 import com.marcmayol.dracpdf.dominio.modelo.TipoFormulario
+import com.marcmayol.dracpdf.dominio.puertos.EstructuraPdf
+import com.marcmayol.dracpdf.dominio.puertos.TextoPdf
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +36,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -71,6 +84,24 @@ data class EstadoVisor(
     val aviso: AvisoFormulario? = null,
     /** La firma que se está colocando, si hay alguna en el aire. */
     val colocacion: ColocacionFirma? = null,
+    /** La búsqueda abierta, si la hay. `null` es «no se está buscando». */
+    val busqueda: Busqueda? = null,
+    /** Lo que hay seleccionado con el dedo, si hay algo. */
+    val seleccion: SeleccionEnCurso? = null,
+    /** El índice del documento, cuando ya se ha pedido. */
+    val indice: List<EntradaIndice> = emptyList(),
+    /** El enlace externo que espera un sí o un no. */
+    val enlacePreguntado: String? = null,
+    /** La ficha del documento, cuando se ha pedido verla. */
+    val propiedades: PropiedadesDocumento? = null,
+    /** Si queda algún cambio del formulario por deshacer. */
+    val hayQueDeshacer: Boolean = false,
+    /**
+     * Cómo se está enseñando el documento. Va en el estado del visor y no en uno
+     * propio porque cambia lo mismo que cambia el zoom —cuánto mide una página en
+     * pantalla— y tenerlos separados obligaría a leer dos flujos para dibujar una fila.
+     */
+    val vista: VistaDelVisor = VistaDelVisor(),
 ) {
     /** Si hay formulario que rellenar, que es lo que habilita el modo. */
     val hayFormulario: Boolean get() = formulario?.esRellenable == true
@@ -106,12 +137,71 @@ enum class AvisoFormulario {
  * constructor en una lista de la compra donde el orden de los argumentos era el único
  * que sabía qué es cada cosa.
  */
+@Suppress("LongParameterList")
 class CasosDelVisor(
     val renderizar: RenderizarPagina,
     val listarCampos: ListarCampos,
     val rellenar: RellenarCampo,
     val guardar: GuardarDocumento,
     val estamparFirma: EstamparFirma,
+    val buscar: BuscarEnDocumento,
+    val texto: TextoPdf,
+    val estructura: EstructuraPdf,
+)
+
+/**
+ * Una búsqueda en marcha o terminada.
+ *
+ * Las coincidencias se van añadiendo mientras se recorre el documento, así que esto
+ * cambia varias veces por búsqueda: el contador sube, y con él la sensación de que
+ * algo está pasando. Un documento de quinientas páginas tarda, y una barra quieta
+ * parece rota.
+ */
+data class Busqueda(
+    val termino: String = "",
+    val coincidencias: List<Coincidencia> = emptyList(),
+    /** Cuál de todas está enseñada ahora mismo, o -1 si aún no hay ninguna. */
+    val activa: Int = -1,
+    val buscando: Boolean = false,
+    /** Si ya se recorrió el documento entero: hasta entonces «0 de 3» es provisional. */
+    val completa: Boolean = false,
+) {
+    val hayResultados: Boolean get() = coincidencias.isNotEmpty()
+
+    /** «3 de 12», o «Sin resultados» cuando ya se ha mirado todo. */
+    val contador: String
+        get() =
+            when {
+                hayResultados -> "${activa + 1} de ${coincidencias.size}"
+                buscando -> "Buscando…"
+                termino.isBlank() -> ""
+                completa -> "Sin resultados"
+                else -> ""
+            }
+
+    /** Las de una página, para pintarlas encima de ella. */
+    fun enLaPagina(pagina: Int): List<Coincidencia> = coincidencias.filter { it.pagina == pagina }
+}
+
+/** Cómo estaba un campo antes del último cambio, que es a donde vuelve «deshacer». */
+data class CambioDeCampo(
+    val campo: IdCampo,
+    val valor: String,
+    val tipo: TipoCampo,
+)
+
+/**
+ * Lo que hay seleccionado con el dedo, y en qué página.
+ *
+ * Los dos puntos se guardan porque son los que mueven las asas: la selección se
+ * recalcula pidiéndosela al motor cada vez que uno de ellos cambia, en vez de
+ * intentar estirar los rectángulos que ya había.
+ */
+data class SeleccionEnCurso(
+    val pagina: Int,
+    val desde: PuntoPt,
+    val hasta: PuntoPt,
+    val seleccion: SeleccionTexto,
 )
 
 /**
@@ -158,17 +248,38 @@ data class DesplazamientoACampo(
  * quien decida la pantalla, así que los modos comparten documento, caché y estado de
  * página. Repartirlos en varios modelos obligaría a mantenerlos sincronizados entre
  * sí, que es peor problema que una clase con muchas funciones.
+ *
+ * Y por lo mismo es grande: el argumento de arriba vale igual para las líneas que para
+ * las funciones, así que la clase se salta las dos medidas a conciencia y no por
+ * descuido.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LargeClass")
 class VisorViewModel(
     private val casos: CasosDelVisor,
     private val registro: RegistroDocumentos,
     private val cache: CachePaginas,
     private val cacheMiniaturas: CachePaginas = CachePaginas(PRESUPUESTO_MINIATURAS),
     private val dispatcherRender: CoroutineDispatcher = Dispatchers.IO,
+    /**
+     * Dónde se recuerda la vista elegida. Puede no haberlo —los tests que sólo miran
+     * cómo se dibuja una página no necesitan disco—, y entonces el visor funciona
+     * igual: lo único que se pierde es que la elección siga puesta mañana.
+     */
+    private val ajustes: AjustesDeInterfaz? = null,
 ) : ViewModel() {
     private val _estado = MutableStateFlow(EstadoVisor())
     val estado: StateFlow<EstadoVisor> = _estado.asStateFlow()
+
+    init {
+        // La vista guardada se recoge sin bloquear el arranque; ver el porqué en
+        // `AjustesDeInterfaz.vista`. Llegue antes o después de abrir el documento, no
+        // se pierde: `mostrar` conserva la vista que hubiera.
+        ajustes?.let { almacen ->
+            viewModelScope.launch {
+                _estado.value = _estado.value.copy(vista = VistaDelVisor.de(almacen.vista.first()))
+            }
+        }
+    }
 
     private val _paginas = MutableStateFlow<Map<ClavePagina, ImageBitmap>>(emptyMap())
 
@@ -182,6 +293,18 @@ class VisorViewModel(
 
     /** Serializa los saltos entre campos: uno detrás de otro, nunca dos a la vez. */
     private val navegacion = Mutex()
+
+    private val _enlaces = MutableStateFlow<Map<Int, List<EnlacePagina>>>(emptyMap())
+
+    /**
+     * Los enlaces de las páginas visibles.
+     *
+     * Se cargan con la ventana igual que los campos, y por el mismo motivo: hay que
+     * saber si hay un enlace bajo el dedo **en el momento del toque**, y preguntárselo
+     * al motor entonces metería un viaje al hilo del documento entre el toque y la
+     * reacción.
+     */
+    val enlaces: StateFlow<Map<Int, List<EnlacePagina>>> = _enlaces.asStateFlow()
 
     private val _campos = MutableStateFlow<Map<Int, List<CampoFormulario>>>(emptyMap())
 
@@ -200,6 +323,17 @@ class VisorViewModel(
     private val trabajosCampos = ConcurrentHashMap<Int, Job>()
     private var indexado: Job? = null
 
+    /** La búsqueda en vuelo. La cancela la tecla siguiente, o cerrar la barra. */
+    private var buscando: Job? = null
+
+    /**
+     * Lo que había en cada campo antes de tocarlo, en orden.
+     *
+     * Tiene tope: un formulario largo con muchas correcciones no puede acumular
+     * historia sin límite, y nadie deshace cien pasos en un móvil.
+     */
+    private val historia = ArrayDeque<CambioDeCampo>()
+
     private val _desplazarA = MutableStateFlow<DesplazamientoACampo?>(null)
 
     /** Lo que la lista tiene que traer a la vista, si hay algo pendiente. */
@@ -216,6 +350,9 @@ class VisorViewModel(
                 paginaActual = estadoDocumento.paginaActual,
                 zoom = estadoDocumento.zoom,
                 firmado = estadoDocumento.documento.estaFirmado,
+                // La vista es del lector y no del documento: cambiar de fichero no
+                // devuelve el ajuste a ancho ni endereza lo que se había girado.
+                vista = _estado.value.vista,
             )
         viewModelScope.launch {
             val formulario = enElMotor { casos.listarCampos.formulario(id) } ?: return@launch
@@ -282,6 +419,7 @@ class VisorViewModel(
         vivas.forEach { pagina -> pedir(id, pagina, estado.zoom) }
 
         if (estado.hayFormulario) sincronizarCampos(id, ventana, vivas)
+        sincronizarEnlaces(id, ventana, vivas)
 
         if (primeraVisible in 0 until estado.paginas && primeraVisible != estado.paginaActual) {
             _estado.value = estado.copy(paginaActual = primeraVisible)
@@ -319,6 +457,58 @@ class VisorViewModel(
                         trabajosCampos.remove(pagina)
                     }
             }
+    }
+
+    /**
+     * Trae los enlaces de lo que está a la vista y suelta los de lo que se fue.
+     *
+     * Se piden para todas las páginas y no sólo cuando el documento «tiene enlaces»:
+     * a diferencia del formulario, un PDF no declara en ninguna parte si los lleva, y
+     * la única forma de saberlo es mirar página a página. Es barato: es leer una lista
+     * corta, no rasterizar.
+     */
+    private fun sincronizarEnlaces(
+        id: IdDocumento,
+        ventana: IntRange,
+        vivas: List<Int>,
+    ) {
+        val sobran = _enlaces.value.keys.filter { it !in ventana }
+        if (sobran.isNotEmpty()) _enlaces.value = _enlaces.value - sobran.toSet()
+
+        vivas
+            .filter { it !in _enlaces.value }
+            .forEach { pagina ->
+                viewModelScope.launch {
+                    val delaPagina = enElMotor { casos.estructura.enlaces(id, pagina) } ?: return@launch
+                    _enlaces.value = _enlaces.value + (pagina to delaPagina)
+                }
+            }
+    }
+
+    /**
+     * Sigue un enlace: si lleva a otra página, salta; si sale fuera, lo deja
+     * preguntado.
+     *
+     * Un enlace externo **no se abre sin avisar**. En un PDF que llega por correo, ese
+     * enlace lo escribió quien mandó el documento, y salir del visor a un navegador es
+     * exactamente la clase de cosa que el usuario tiene derecho a confirmar.
+     */
+    fun seguirEnlace(destino: DestinoEnlace) {
+        when (destino) {
+            is DestinoEnlace.Pagina -> {
+                val estado = _estado.value
+                if (destino.numero !in 0 until estado.paginas) return
+                irAPagina(destino.numero)
+                _desplazarA.value = DesplazamientoACampo(destino.numero, 0f)
+            }
+
+            is DestinoEnlace.Fuera -> _estado.value = _estado.value.copy(enlacePreguntado = destino.url)
+        }
+    }
+
+    /** El usuario ha decidido sobre el enlace externo: se olvida la pregunta. */
+    fun olvidarEnlace() {
+        _estado.value = _estado.value.copy(enlacePreguntado = null)
     }
 
     private fun pedir(
@@ -406,6 +596,38 @@ class VisorViewModel(
 
     fun alternarChrome() {
         _estado.value = _estado.value.copy(chromeVisible = !_estado.value.chromeVisible)
+    }
+
+    /** Elige cómo se encaja la página: a lo ancho, o entera. */
+    fun ajustarLaVista(ajuste: AjusteDeVista) = cambiarLaVista { it.copy(ajuste = ajuste) }
+
+    /**
+     * Pide dos páginas lado a lado, o vuelve a una.
+     *
+     * Aquí se guarda el deseo y no el resultado: si la pantalla es estrecha se seguirá
+     * viendo una sola, pero al girar el teléfono o al abrir el mismo documento en una
+     * tablet aparecerán las dos, sin tener que volver a pedirlo.
+     */
+    fun alternarDoblePagina() = cambiarLaVista { it.copy(doblePagina = !it.doblePagina) }
+
+    /** Gira lo que se ve un cuarto de vuelta más. El documento no se toca. */
+    fun girarLaVista() = cambiarLaVista { it.copy(giro = it.giro.siguiente) }
+
+    /**
+     * Lo común a las tres: aplicar en el acto y guardar después.
+     *
+     * Es la misma disciplina que el tema, y por el mismo motivo: el lector ve el cambio
+     * al soltar el dedo, sin esperar al disco, y si el guardado fallara lo que se
+     * pierde es la preferencia de mañana, no la vista de ahora.
+     */
+    private fun cambiarLaVista(cambio: (VistaDelVisor) -> VistaDelVisor) {
+        val anterior = _estado.value.vista
+        val nueva = cambio(anterior)
+        if (nueva == anterior) return
+
+        _estado.value = _estado.value.copy(vista = nueva)
+        val almacen = ajustes ?: return
+        viewModelScope.launch { almacen.elegirVista(nueva.ajuste.name, nueva.doblePagina, nueva.giro.name) }
     }
 
     /**
@@ -600,6 +822,42 @@ class VisorViewModel(
     ) = cambiarCampo(campo) { id -> casos.rellenar.elegir(id, campo, opcion) }
 
     /**
+     * Deshace el último cambio del formulario.
+     *
+     * Se guarda **lo que había antes** de cada escritura y se vuelve a escribir, en
+     * vez de usar el diario del motor: el diario de MuPDF y el guardado incremental
+     * cuentan la misma historia de dos maneras, y mezclarlos deshace más de lo que el
+     * usuario cree que está deshaciendo. Aquí lo que se deshace es exactamente un
+     * cambio suyo.
+     */
+    fun deshacer() {
+        val cambio = historia.removeLastOrNull() ?: return
+        _estado.value = _estado.value.copy(hayQueDeshacer = historia.isNotEmpty())
+        // Rehacer el valor anterior es otro cambio para el documento, pero no para la
+        // historia: si se apuntara, «deshacer» se pelearía consigo mismo.
+        cambiarCampo(cambio.campo, apuntar = false) { id -> restaurar(id, cambio) }
+    }
+
+    private fun restaurar(
+        id: IdDocumento,
+        cambio: CambioDeCampo,
+    ): CampoFormulario =
+        when (cambio.tipo) {
+            TipoCampo.CASILLA, TipoCampo.RADIO -> casos.rellenar.alternar(id, cambio.campo)
+            TipoCampo.COMBO, TipoCampo.LISTA -> casos.rellenar.elegir(id, cambio.campo, cambio.valor)
+            else -> casos.rellenar.texto(id, cambio.campo, cambio.valor)
+        }
+
+    /** Apunta cómo estaba el campo antes de tocarlo, para poder volver ahí. */
+    private fun apuntarEnLaHistoria(campo: IdCampo) {
+        val actual =
+            _campos.value[campo.pagina]?.firstOrNull { it.id == campo } ?: return
+        historia.addLast(CambioDeCampo(campo, actual.valor, actual.tipo))
+        if (historia.size > TOPE_DE_HISTORIA) historia.removeFirst()
+        _estado.value = _estado.value.copy(hayQueDeshacer = true)
+    }
+
+    /**
      * Lo común a los tres: cambiar, reflejarlo en el overlay y **tirar el render de
      * esa página**.
      *
@@ -610,8 +868,10 @@ class VisorViewModel(
      */
     private fun cambiarCampo(
         campo: IdCampo,
+        apuntar: Boolean = true,
         accion: (IdDocumento) -> CampoFormulario,
     ) {
+        if (apuntar) apuntarEnLaHistoria(campo)
         val estado = _estado.value
         val id = estado.id ?: return
         // A propósito no se exige estar en el modo: el volcado de lo que quedó a medio
@@ -765,6 +1025,180 @@ class VisorViewModel(
         }
     }
 
+    /**
+     * Abre la búsqueda. El campo empieza vacío pero el modo ya está puesto: la barra
+     * cambia al momento y el teclado sube con ella.
+     */
+    fun abrirBusqueda() {
+        if (_estado.value.id == null) return
+        _estado.value = _estado.value.copy(modo = ModoVisor.Buscar, chromeVisible = true, busqueda = Busqueda())
+    }
+
+    /** Cierra la búsqueda y con ella los resaltados: fuera del modo no hay nada pintado. */
+    fun cerrarBusqueda() {
+        buscando?.cancel()
+        buscando = null
+        _estado.value = _estado.value.copy(modo = ModoVisor.Lectura, busqueda = null)
+    }
+
+    /**
+     * Busca lo escrito, desde la página que se está mirando.
+     *
+     * Cada tecla cancela la búsqueda anterior y arranca otra: en un documento largo,
+     * la de «tot» ya no le importa a nadie cuando se ha escrito «total», y dejarla
+     * correr ocuparía el hilo del documento que la nueva necesita.
+     */
+    fun buscar(termino: String) {
+        val estado = _estado.value
+        val id = estado.id ?: return
+        buscando?.cancel()
+        _estado.value = estado.copy(busqueda = Busqueda(termino = termino, buscando = termino.isNotBlank()))
+        if (termino.isBlank()) return
+
+        buscando =
+            viewModelScope.launch {
+                val encontradas = mutableListOf<Coincidencia>()
+                withContext(dispatcherRender) {
+                    casos.buscar(id, termino, estado.paginas, estado.paginaActual) { enLaPagina ->
+                        encontradas += enLaPagina
+                        publicarHallazgos(termino, encontradas.toList())
+                        // Se sigue mientras la corrutina viva: cancelarla es lo que
+                        // hace la tecla siguiente.
+                        isActive
+                    }
+                }
+                if (isActive) cerrarLaBusqueda(termino, encontradas.toList())
+            }
+    }
+
+    /** Lo encontrado hasta ahora, con la primera coincidencia ya señalada. */
+    private fun publicarHallazgos(
+        termino: String,
+        encontradas: List<Coincidencia>,
+    ) {
+        val busqueda = _estado.value.busqueda ?: return
+        if (busqueda.termino != termino) return
+        _estado.value =
+            _estado.value.copy(
+                busqueda =
+                    busqueda.copy(
+                        coincidencias = encontradas,
+                        // La primera que aparece se señala sola: es a la que hay que
+                        // llevar al lector sin que tenga que pulsar «siguiente».
+                        activa = if (busqueda.activa < 0) 0 else busqueda.activa,
+                    ),
+            )
+        if (busqueda.activa < 0) llevarACoincidencia(0)
+    }
+
+    private fun cerrarLaBusqueda(
+        termino: String,
+        encontradas: List<Coincidencia>,
+    ) {
+        val busqueda = _estado.value.busqueda ?: return
+        if (busqueda.termino != termino) return
+        _estado.value =
+            _estado.value.copy(
+                busqueda = busqueda.copy(coincidencias = encontradas, buscando = false, completa = true),
+            )
+    }
+
+    /**
+     * Salta a la coincidencia siguiente o a la anterior, dando la vuelta por los
+     * extremos: en la última, «siguiente» lleva a la primera.
+     */
+    fun irACoincidencia(direccion: Direccion) {
+        val busqueda = _estado.value.busqueda ?: return
+        if (!busqueda.hayResultados) return
+        val cuantas = busqueda.coincidencias.size
+        val siguiente = ((busqueda.activa + direccion.paso) % cuantas + cuantas) % cuantas
+        _estado.value = _estado.value.copy(busqueda = busqueda.copy(activa = siguiente))
+        llevarACoincidencia(siguiente)
+    }
+
+    /** Trae a la vista la coincidencia señalada, como se hace con un campo. */
+    private fun llevarACoincidencia(cual: Int) {
+        val busqueda = _estado.value.busqueda ?: return
+        val coincidencia = busqueda.coincidencias.getOrNull(cual) ?: return
+        val id = _estado.value.id ?: return
+
+        _estado.value = _estado.value.copy(paginaActual = coincidencia.pagina)
+        registro.anotarPagina(id, coincidencia.pagina)
+        _desplazarA.value =
+            DesplazamientoACampo(
+                pagina = coincidencia.pagina,
+                fraccionY = coincidencia.marco.y0 / (tamanoDe(coincidencia.pagina)?.alto ?: 1f),
+            )
+    }
+
+    /**
+     * Empieza una selección en el punto que se ha mantenido pulsado.
+     *
+     * Si ahí no hay texto no pasa nada: en un escaneado no lo hay en ninguna parte, y
+     * entrar en el modo de selección para no poder seleccionar sería peor que no
+     * entrar.
+     */
+    fun seleccionarPalabraEn(
+        pagina: Int,
+        punto: PuntoPt,
+    ) {
+        val id = _estado.value.id ?: return
+        viewModelScope.launch {
+            val encontrada = enElMotor { casos.texto.palabraEn(id, pagina, punto) } ?: return@launch
+            _estado.value =
+                _estado.value.copy(
+                    modo = ModoVisor.SeleccionarTexto,
+                    chromeVisible = true,
+                    seleccion = SeleccionEnCurso(pagina, punto, punto, encontrada),
+                )
+        }
+    }
+
+    /** Mueve un asa de la selección y vuelve a preguntar qué queda dentro. */
+    fun moverAsa(
+        inicial: Boolean,
+        punto: PuntoPt,
+    ) {
+        val actual = _estado.value.seleccion ?: return
+        val id = _estado.value.id ?: return
+        val desde = if (inicial) punto else actual.desde
+        val hasta = if (inicial) actual.hasta else punto
+
+        viewModelScope.launch {
+            val nueva = enElMotor { casos.texto.seleccionEntre(id, actual.pagina, desde, hasta) } ?: return@launch
+            _estado.value =
+                _estado.value.copy(seleccion = actual.copy(desde = desde, hasta = hasta, seleccion = nueva))
+        }
+    }
+
+    /** Suelta la selección y vuelve a leer. */
+    fun soltarSeleccion() {
+        _estado.value = _estado.value.copy(modo = ModoVisor.Lectura, seleccion = null)
+    }
+
+    /** Pide la ficha del documento para enseñarla. */
+    fun verPropiedades() {
+        val id = _estado.value.id ?: return
+        viewModelScope.launch {
+            val ficha = enElMotor { casos.estructura.propiedades(id) } ?: return@launch
+            _estado.value = _estado.value.copy(propiedades = ficha)
+        }
+    }
+
+    fun cerrarPropiedades() {
+        _estado.value = _estado.value.copy(propiedades = null)
+    }
+
+    /** Pide el índice del documento la primera vez que hace falta. */
+    fun cargarIndice() {
+        val id = _estado.value.id ?: return
+        if (_estado.value.indice.isNotEmpty()) return
+        viewModelScope.launch {
+            val entradas = enElMotor { casos.estructura.indice(id) } ?: return@launch
+            _estado.value = _estado.value.copy(indice = entradas)
+        }
+    }
+
     fun descartarError() {
         _estado.value = _estado.value.copy(error = null)
     }
@@ -842,5 +1276,8 @@ class VisorViewModel(
          * eso caben unas sesenta a la vez, y la LRU va soltando las que se alejan.
          */
         const val PRESUPUESTO_MINIATURAS = 8 * 1024 * 1024
+
+        /** Cuántos cambios de formulario se recuerdan para poder deshacerlos. */
+        const val TOPE_DE_HISTORIA = 50
     }
 }

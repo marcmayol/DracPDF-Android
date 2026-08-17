@@ -47,6 +47,11 @@ fun BarraSuperiorVisor(
     documentosAbiertos: Int = 1,
     alAbrirDocumentos: () -> Unit = {},
     alAbrirOtro: () -> Unit = {},
+    alBuscar: (() -> Unit)? = null,
+    alImprimir: (() -> Unit)? = null,
+    alCompartir: (() -> Unit)? = null,
+    alVerPropiedades: (() -> Unit)? = null,
+    alAjustarLaVista: (() -> Unit)? = null,
 ) {
     Row(
         modifier =
@@ -103,10 +108,10 @@ fun BarraSuperiorVisor(
         BotonIconoLadon(
             icono = IconosLadon.buscar,
             descripcion = "Buscar en el documento",
-            alPulsar = {},
-            // Llega en la Fase 7. Se ve y no se pulsa: una acción que desaparece deja
-            // al usuario buscándola, y el inventario exige poder comprobar su estado.
-            habilitado = false,
+            alPulsar = alBuscar ?: {},
+            // Se ve aunque no se pueda pulsar: una acción que desaparece deja al
+            // usuario buscándola, y el inventario exige poder comprobar su estado.
+            habilitado = alBuscar != null,
             modifier = Modifier.testTag(TAG_BUSCAR),
         )
         Box {
@@ -120,6 +125,13 @@ fun BarraSuperiorVisor(
             MenuDelVisor(
                 abierto = menuAbierto,
                 alCerrar = { menuAbierto = false },
+                alAjustarLaVista =
+                    alAjustarLaVista?.let {
+                        {
+                            menuAbierto = false
+                            it()
+                        }
+                    },
                 alAbrirDocumentos = {
                     menuAbierto = false
                     alAbrirDocumentos()
@@ -128,6 +140,27 @@ fun BarraSuperiorVisor(
                     menuAbierto = false
                     alAbrirOtro()
                 },
+                alImprimir =
+                    alImprimir?.let {
+                        {
+                            menuAbierto = false
+                            it()
+                        }
+                    },
+                alCompartir =
+                    alCompartir?.let {
+                        {
+                            menuAbierto = false
+                            it()
+                        }
+                    },
+                alVerPropiedades =
+                    alVerPropiedades?.let {
+                        {
+                            menuAbierto = false
+                            it()
+                        }
+                    },
             )
         }
     }
@@ -144,6 +177,11 @@ fun BarraSuperiorVisor(
  * El resto son las acciones de documento de la §15. Se ven apagadas hasta que su fase
  * las traiga: un menú que cambia de largo entre versiones obliga a volver a buscarlo
  * todo cada vez.
+ *
+ * «Vista» encabeza la lista y va separada del resto porque no es una acción de
+ * documento: no le hace nada al fichero, sólo cambia cómo se está mirando. Entra por
+ * aquí y no por una barra porque las dos barras del visor están llenas, y el diseño no
+ * deja abrir una tercera.
  */
 @Composable
 private fun MenuDelVisor(
@@ -151,12 +189,22 @@ private fun MenuDelVisor(
     alCerrar: () -> Unit,
     alAbrirDocumentos: () -> Unit,
     alAbrirOtro: () -> Unit,
+    alAjustarLaVista: (() -> Unit)? = null,
+    alImprimir: (() -> Unit)? = null,
+    alCompartir: (() -> Unit)? = null,
+    alVerPropiedades: (() -> Unit)? = null,
 ) {
     DropdownMenu(
         expanded = abierto,
         onDismissRequest = alCerrar,
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
     ) {
+        EntradaDeMenu(
+            etiqueta = "Vista",
+            icono = IconosLadon.ajustarPagina,
+            alPulsar = alAjustarLaVista,
+            tag = TAG_MENU_VISTA,
+        )
         EntradaDeMenu(
             etiqueta = "Documentos abiertos",
             icono = IconosLadon.documentos,
@@ -170,9 +218,9 @@ private fun MenuDelVisor(
             tag = TAG_MENU_ABRIR,
         )
         EntradaDeMenu("Guardar una copia", IconosLadon.guardar, tag = TAG_MENU_COPIA)
-        EntradaDeMenu("Imprimir", IconosLadon.imprimir, tag = TAG_MENU_IMPRIMIR)
-        EntradaDeMenu("Compartir", IconosLadon.compartir, tag = TAG_MENU_COMPARTIR)
-        EntradaDeMenu("Propiedades", IconosLadon.propiedades, tag = TAG_MENU_PROPIEDADES)
+        EntradaDeMenu("Imprimir", IconosLadon.imprimir, tag = TAG_MENU_IMPRIMIR, alPulsar = alImprimir)
+        EntradaDeMenu("Compartir", IconosLadon.compartir, tag = TAG_MENU_COMPARTIR, alPulsar = alCompartir)
+        EntradaDeMenu("Propiedades", IconosLadon.propiedades, tag = TAG_MENU_PROPIEDADES, alPulsar = alVerPropiedades)
     }
 }
 
@@ -283,6 +331,10 @@ fun BarraDelModo(
     alConfirmarColocacion: () -> Unit,
     alCancelarColocacion: () -> Unit,
     alAbrirFirmas: () -> Unit,
+    alCopiar: () -> Unit,
+    alCompartir: () -> Unit,
+    alDeshacer: () -> Unit,
+    hayQueDeshacer: Boolean,
     campos: Int,
     modifier: Modifier = Modifier,
     formularioDisponible: Boolean = false,
@@ -318,8 +370,75 @@ fun BarraDelModo(
                 guardando = guardando,
                 hayCampoAnterior = hayCampoAnterior,
                 hayCampoSiguiente = hayCampoSiguiente,
+                alDeshacer = alDeshacer,
+                hayQueDeshacer = hayQueDeshacer,
                 modifier = modifier,
             )
+
+        ModoVisor.SeleccionarTexto ->
+            BarraSeleccion(alCopiar = alCopiar, alCompartir = alCompartir, modifier = modifier)
+
+        // Buscar no pone barra abajo: sus dos flechas y su contador están arriba, junto
+        // al campo, y una segunda barra sólo taparía documento mientras se lee lo que se
+        // acaba de encontrar.
+        ModoVisor.Buscar -> Unit
+    }
+}
+
+/**
+ * Lo que se puede hacer con el texto seleccionado: copiarlo o mandarlo a otra
+ * aplicación.
+ *
+ * Son las dos de siempre y no hay más: marcarlo, subrayarlo o tacharlo son
+ * anotaciones y llegan en la Fase 8, con su propia barra.
+ */
+@Composable
+fun BarraSeleccion(
+    alCopiar: () -> Unit,
+    alCompartir: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .navigationBarsPadding()
+                .heightIn(min = MedidasLadon.barraContextual)
+                .padding(horizontal = 12.dp)
+                .testTag(TAG_BARRA_SELECCION),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        AccionDeTexto("Copiar", IconosLadon.copiar, TAG_SELECCION_COPIAR, alCopiar)
+        AccionDeTexto("Compartir", IconosLadon.compartir, TAG_SELECCION_COMPARTIR, alCompartir)
+    }
+}
+
+@Composable
+private fun AccionDeTexto(
+    etiqueta: String,
+    icono: Int,
+    tag: String,
+    alPulsar: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .heightIn(min = MedidasLadon.areaTactil)
+                .clickable(onClick = alPulsar)
+                .padding(horizontal = 12.dp)
+                .semantics { role = Role.Button }
+                .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        IconoLadon(icono = icono, descripcion = null, estado = EstadoIcono.ACENTO)
+        Text(
+            text = etiqueta,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
@@ -402,6 +521,8 @@ fun BarraFormulario(
     modifier: Modifier = Modifier,
     alCampoAnterior: () -> Unit = {},
     alCampoSiguiente: () -> Unit = {},
+    alDeshacer: () -> Unit = {},
+    hayQueDeshacer: Boolean = false,
     cambiosSinGuardar: Boolean = false,
     guardando: Boolean = false,
     hayCampoAnterior: Boolean = false,
@@ -434,6 +555,15 @@ fun BarraFormulario(
             modifier = Modifier.padding(horizontal = 8.dp).testTag(TAG_FORM_CONTADOR),
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
+            BotonIconoLadon(
+                icono = IconosLadon.deshacer,
+                descripcion = "Deshacer el último cambio",
+                alPulsar = alDeshacer,
+                // Sólo hay algo que deshacer si se ha escrito algo: el botón dice la
+                // verdad sobre si queda historia detrás.
+                habilitado = hayQueDeshacer,
+                modifier = Modifier.testTag(TAG_FORM_DESHACER),
+            )
             BotonIconoLadon(
                 icono = IconosLadon.paginaAnterior,
                 descripcion = "Campo anterior",
@@ -560,6 +690,7 @@ const val TAG_BUSCAR = "visor_buscar"
 
 /** El ⋮ del visor y lo que despliega. */
 const val TAG_MENU = "visor_menu"
+const val TAG_MENU_VISTA = "visor_menu_vista"
 const val TAG_MENU_DOCUMENTOS = "visor_menu_documentos"
 const val TAG_MENU_ABRIR = "visor_menu_abrir"
 const val TAG_MENU_COPIA = "visor_menu_copia"
@@ -574,6 +705,7 @@ const val TAG_CHEVRON_DOCUMENTOS = "visor_chevron_documentos"
 
 const val TAG_BARRA_FORMULARIO = "visor_barra_formulario"
 const val TAG_FORM_CONTADOR = "visor_form_contador"
+const val TAG_FORM_DESHACER = "visor_form_deshacer"
 const val TAG_FORM_ANTERIOR = "visor_form_anterior"
 const val TAG_FORM_SIGUIENTE = "visor_form_siguiente"
 
@@ -582,6 +714,10 @@ const val TAG_BARRA_MODO = "visor_barra_modo"
 const val TAG_MODO_CERRAR = "visor_modo_cerrar"
 const val TAG_MODO_TITULO = "visor_modo_titulo"
 const val TAG_MODO_ACCION = "visor_modo_accion"
+
+const val TAG_BARRA_SELECCION = "visor_barra_seleccion"
+const val TAG_SELECCION_COPIAR = "seleccion_copiar"
+const val TAG_SELECCION_COMPARTIR = "seleccion_compartir"
 
 const val TAG_BARRA_COLOCACION = "visor_barra_colocacion"
 const val TAG_COLOCACION_CANCELAR = "visor_colocacion_cancelar"

@@ -123,9 +123,51 @@ si la página cae en un sitio distinto del que se ve, es el cálculo del hueco.
 
 ---
 
+## Fase 7 · Fundamentos de visor móvil
+
+### 9. Imprimir de verdad, y con el rango pedido
+
+Los tests comprueban que el PDF que se entrega lleva las páginas correctas; lo que no
+pueden comprobar es el diálogo del sistema ni la impresora.
+
+1. Abrir un documento de al menos 6 páginas → ⋮ → Imprimir.
+2. En el diálogo del sistema, elegir «Guardar como PDF» y **páginas 2-4**.
+3. Abrir el PDF resultante.
+
+**Tiene que pasar:** tiene tres páginas, y son la 2, la 3 y la 4 del original.
+
+**Si falla:** si salen las seis, el rango no está llegando; si sale una hoja en
+blanco, el problema es la escritura al descriptor del sistema.
+
+### 10. Seleccionar texto con el dedo
+
+1. Mantener pulsada una palabra del documento.
+2. Arrastrar las dos asas para ampliar la selección.
+3. Copiar, y pegar en cualquier otra aplicación.
+
+**Tiene que pasar:** se selecciona la palabra entera al primer toque, las asas ajustan
+letra a letra, y lo pegado es exactamente lo que estaba resaltado.
+
+**Si falla:** decir si el problema es que no selecciona nada —posible escaneado sin
+texto— o que selecciona otra cosa.
+
+### 11. Los recientes sobreviven al teléfono
+
+1. Abrir dos o tres documentos desde sitios distintos (descargas, Drive, WhatsApp) y
+   dejar cada uno por una página que no sea la primera.
+2. Cerrar la aplicación **desde el gestor de tareas**, no con «atrás».
+3. Volver a abrirla y tocar uno de los recientes.
+
+**Tiene que pasar:** están los tres, en orden, y el que se abre lo hace **por la página
+donde se dejó**. Los que llegaron compartidos desde otra aplicación pueden avisar de
+que quizá ya no abran: eso es correcto, y al tocarlos tienen que fallar con un aviso
+limpio, nunca cerrarse.
+
+---
+
 ## Fase 1 · Lo que quedó pendiente de comprobar en aparato real
 
-### 9. Abrir un PDF desde otra aplicación
+### 12. Abrir un PDF desde otra aplicación
 
 Enviar un PDF a DracPDF desde WhatsApp, Gmail y el gestor de archivos.
 
@@ -134,7 +176,7 @@ Enviar un PDF a DracPDF desde WhatsApp, Gmail y el gestor de archivos.
 **Nota:** que el selector del sistema ofrezca «Siempre» y el trato fino de los URI
 efímeros son de la Fase 11, no de ahora; aquí sólo se mira que abra.
 
-### 10. Un documento largo de verdad
+### 13. Un documento largo de verdad
 
 Abrir el PDF más gordo que haya a mano y hacer scroll rápido, zoom y saltos de
 página.
