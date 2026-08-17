@@ -70,7 +70,10 @@ object GeneradorFixtures {
     ): String =
         buildString {
             append("BT /F1 48 Tf 72 720 Td (Pagina $numero de $total) Tj ET\n")
-            append("BT /F1 12 Tf 72 660 Td (DracPDF Android · fixture de la Fase 1) Tj ET\n")
+            // ASCII a secas. El flujo se escribe en UTF-8 y la fuente base lo lee con la
+            // codificación WinAnsi, así que un «·» llegaba a la página como «Â·» y salía
+            // en todas las capturas. No vale la pena codificar bien por un separador.
+            append("BT /F1 12 Tf 72 660 Td (DracPDF Android - fixture de la Fase 1) Tj ET\n")
             // Un marco, para que el render tenga tinta hasta los bordes y se note si
             // la escala se aplica mal.
             append("2 w 36 36 ${ANCHO_A4 - 72} ${ALTO_A4 - 72} re S\n")

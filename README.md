@@ -13,8 +13,9 @@ la casa. Esta app no lleva sistema de auto-actualización propio.
 
 ## Estado
 
-**Las once fases del plan están escritas y con sus tests en verde.** El detalle de
-cada una y sus criterios de aceptación están en [`PLAN.md`](PLAN.md).
+**Las once fases del plan están escritas y con sus tests en verde**: 268 instrumentados
+sobre emulador —147 de adaptadores, 96 de la aplicación y 25 de interfaz— más los de
+JVM. El detalle de cada fase y sus criterios de aceptación están en [`PLAN.md`](PLAN.md).
 
 Lo que queda no es código, es aparato: la primera publicación en DracApps hay que
 hacerla con la keystore delante (ver «Publicación» más abajo), y hay cosas que sólo se

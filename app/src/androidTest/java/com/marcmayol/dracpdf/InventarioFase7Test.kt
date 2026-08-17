@@ -39,6 +39,7 @@ import com.marcmayol.dracpdf.ui.visor.TAG_TAB_INDICE
 import com.marcmayol.dracpdf.ui.visor.TAG_TAB_MINIATURAS
 import com.marcmayol.dracpdf.ui.visor.VisorViewModel
 import org.junit.After
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -119,8 +120,19 @@ class InventarioFase7Test {
         composicion.waitForIdle()
 
         composicion.onNodeWithTag(TAG_HOJA_INDICE).assertIsDisplayed()
+        // Las dos pestañas, y **midiendo algo**. Estar en el árbol no basta: «Miniaturas»
+        // estuvo un tiempo con anchura cero porque el subrayado de la activa se llevaba
+        // toda la fila, y un test que sólo preguntara si existe lo habría dado por bueno.
         composicion.onNodeWithTag(TAG_TAB_MINIATURAS).assertIsDisplayed()
         composicion.onNodeWithTag(TAG_TAB_INDICE).assertIsDisplayed()
+        listOf(TAG_TAB_MINIATURAS, TAG_TAB_INDICE).forEach { pestana ->
+            val ancho =
+                composicion
+                    .onNodeWithTag(pestana)
+                    .fetchSemanticsNode()
+                    .size.width
+            assertTrue("La pestaña $pestana no ocupa nada: mide $ancho de ancho", ancho > 0)
+        }
         // Y «ir a la página», que es la otra forma de moverse por un documento largo.
         composicion.onNodeWithTag(TAG_CAMPO_IR_A_PAGINA).assertIsDisplayed()
     }

@@ -96,7 +96,10 @@ class CapturasVistaTest {
         // composición a media vuelta la deja huérfana y no se dibuja nada.
         Thread.sleep(ESPERA_AL_GIRAR_MS)
         val modelo = visorEnPantalla()
-        modelo.alternarDoblePagina()
+        // En el hilo de la interfaz y con el árbol quieto. Cambiar el modo desde el hilo
+        // del test mientras Compose está midiendo revienta con «performMeasureAndLayout
+        // called during measure layout», y con el giro de por medio pasa a menudo.
+        composicion.runOnIdle { modelo.alternarDoblePagina() }
 
         enLosDosTemas { sufijo -> guardar("vista-doble-$sufijo") }
     }
@@ -149,7 +152,7 @@ class CapturasVistaTest {
                 PantallaVisor(modelo = modelo, alSalir = {})
             }
         }
-        modelo.mostrar(abierto.id)
+        composicion.runOnIdle { modelo.mostrar(abierto.id) }
         composicion.waitUntil(ESPERA_MS) { repo.paginasRenderizadas > 0 }
         composicion.waitForIdle()
         return modelo

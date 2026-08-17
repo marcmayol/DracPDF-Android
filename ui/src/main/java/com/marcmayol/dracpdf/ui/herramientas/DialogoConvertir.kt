@@ -155,12 +155,9 @@ private fun AjustesDeImagen(
     alFijarEscala: (Float) -> Unit,
     alEscribirRangos: (String) -> Unit,
 ) {
+    // Sin explicación propia: la de arriba ya dice lo que va a pasar, y esta repetía la
+    // misma frase palabra por palabra dos párrafos seguidos. Sólo se veía en pantalla.
     Column {
-        Text(
-            text = "Una imagen por página, en la carpeta que elijas.",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 12.dp),
-        )
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(top = 8.dp),

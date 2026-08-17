@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.marcmayol.dracpdf.adaptadores.fixtures.GeneradorFixtures
@@ -17,7 +18,6 @@ import com.marcmayol.dracpdf.ui.visor.PantallaVisor
 import com.marcmayol.dracpdf.ui.visor.TAG_BUSCAR
 import com.marcmayol.dracpdf.ui.visor.TAG_BUSQUEDA_CAMPO
 import com.marcmayol.dracpdf.ui.visor.TAG_DESTINO_INDICE
-import com.marcmayol.dracpdf.ui.visor.TAG_HOJA_INDICE
 import com.marcmayol.dracpdf.ui.visor.VisorViewModel
 import org.junit.After
 import org.junit.Rule
@@ -83,10 +83,11 @@ class CapturasFase7Test {
 
             composicion.onNodeWithTag(TAG_DESTINO_INDICE).performClick()
             esperar()
-            // Por el tag y no por la raíz: la hoja vive en su propia ventana y
-            // capturar «todo» no sabe cuál de las dos quiere.
-            guardar("indice-$sufijo", TAG_HOJA_INDICE)
-            composicion.onNodeWithTag(TAG_DESTINO_INDICE).performClick()
+            guardar("indice-$sufijo")
+            // Con la tecla de atrás y no volviendo a pulsar el destino: la hoja está
+            // encima y se come el toque, así que el segundo clic no cerraba nada y la
+            // vuelta siguiente fotografiaba la búsqueda con el índice puesto delante.
+            Espresso.pressBack()
             composicion.waitForIdle()
         }
     }
@@ -105,10 +106,7 @@ class CapturasFase7Test {
      * ventana, y desde el árbol de la pantalla principal no se pueden fotografiar. Esto
      * es lo mismo que ve el usuario, que es de lo que va una captura.
      */
-    private fun guardar(
-        nombre: String,
-        tag: String? = null,
-    ) {
+    private fun guardar(nombre: String) {
         composicion.waitForIdle()
         val mapa = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         val destino = File(contexto.getExternalFilesDir(null), "$nombre.png")

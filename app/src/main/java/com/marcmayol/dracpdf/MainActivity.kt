@@ -357,6 +357,14 @@ private fun AplicacionDracPDFUi(
 
         is EstadoApp.Viendo -> {
             LaunchedEffect(actual.id) { visorModelo.mostrar(actual.id) }
+            // Las dos salen una vez y se usan dos veces, desde el menú del documento y
+            // desde la rejilla de herramientas: son la misma acción y tienen que hacer
+            // exactamente lo mismo, no dos caminos parecidos que se separen con el tiempo.
+            val imprimirDocumento: () -> Unit = { imprimir(contexto, grafo, actual.id, nombreDelAbierto) }
+            val compartirDocumento: () -> Unit = {
+                Compartir.documento(contexto, grafo.repositorio.origenDe(actual.id), nombreDelAbierto)
+            }
+
             PantallaVisor(
                 modelo = visorModelo,
                 alSalir = appModelo::volverAlInicio,
@@ -366,16 +374,19 @@ private fun AplicacionDracPDFUi(
                 alElegirHerramienta = { herramienta ->
                     arrancar(
                         herramienta = herramienta,
-                        alPedirDestino = pedirDestino,
-                        alElegirVarios = { selectorParaUnir.launch(arrayOf(TIPO_PDF)) },
-                        alPreguntar = { preguntando = it },
+                        por =
+                            ArranquesDeHerramienta(
+                                alPedirDestino = pedirDestino,
+                                alElegirVarios = { selectorParaUnir.launch(arrayOf(TIPO_PDF)) },
+                                alPreguntar = { preguntando = it },
+                                alCompartir = compartirDocumento,
+                                alImprimir = imprimirDocumento,
+                            ),
                     )
                 },
                 firmas = firmasModelo,
-                alImprimir = { imprimir(contexto, grafo, actual.id, nombreDelAbierto) },
-                alCompartirDocumento = {
-                    Compartir.documento(contexto, grafo.repositorio.origenDe(actual.id), nombreDelAbierto)
-                },
+                alImprimir = imprimirDocumento,
+                alCompartirDocumento = compartirDocumento,
                 alGuardarCopia = {
                     destinoDeLaCopia.launch(nombreDeLaCopia(nombreDelAbierto, actual.id.valor in efimeros))
                 },

@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -305,6 +307,12 @@ private fun PestanaHoja(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier =
             Modifier
+                // La anchura del título y no la que haya libre. El subrayado de abajo pide
+                // el ancho máximo, y sin acotar aquí la pestaña activa se quedaba con toda
+                // la fila: la otra medía cero y desaparecía. Pasó con «Miniaturas» en
+                // cuanto un documento traía índice, que es justo cuando hace falta poder
+                // volver a ellas.
+                .width(IntrinsicSize.Max)
                 .clickable(enabled = habilitada && !activa, onClick = alPulsar)
                 .padding(horizontal = 4.dp)
                 .testTag(tag),

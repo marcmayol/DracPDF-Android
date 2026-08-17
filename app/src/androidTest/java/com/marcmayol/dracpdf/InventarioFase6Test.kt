@@ -87,25 +87,15 @@ class InventarioFase6Test {
         composicion.setContent { TemaDracPDF { HojaHerramientas(alElegir = {}, alCerrar = {}) } }
         composicion.waitForIdle()
 
-        val deEstaFase =
-            listOf(
-                Herramienta.ORGANIZAR,
-                Herramienta.UNIR,
-                Herramienta.DIVIDIR,
-                Herramienta.CONVERTIR,
-                Herramienta.COMPRIMIR,
-                Herramienta.PROTEGER,
-            )
-        deEstaFase.forEach { herramienta ->
+        // Las nueve, y las nueve encendidas: la rejilla se dibujó entera desde el primer
+        // día para que no cambiara de largo entre versiones, y las que llegaban después
+        // —compartir, imprimir, anotaciones— ya llegaron. Dejarlas grises ahora sería
+        // esconder algo que la aplicación sabe hacer.
+        Herramienta.entries.forEach { herramienta ->
             composicion.onNodeWithTag(herramienta.tag).assertIsDisplayed()
             composicion.onNodeWithTag(herramienta.tag).assertIsEnabled()
         }
-
-        // Las de fases posteriores se ven y no se pulsan, como el resto de la aplicación.
-        listOf(Herramienta.COMPARTIR, Herramienta.IMPRIMIR, Herramienta.ANOTACIONES).forEach {
-            composicion.onNodeWithTag(it.tag).assertIsDisplayed()
-            composicion.onNodeWithTag(it.tag).assertIsNotEnabled()
-        }
+        assertEquals("La rejilla ya no trae nueve herramientas", NUEVE, Herramienta.entries.size)
     }
 
     @Test
@@ -210,10 +200,13 @@ class InventarioFase6Test {
         listOf(Herramienta.ORGANIZAR, Herramienta.UNIR, Herramienta.DIVIDIR, Herramienta.COMPRIMIR)
             .forEach { composicion.onNodeWithTag(it.tag).assertIsNotEnabled() }
 
-        // Convertir sigue viva: sólo lee. Negarla confundiría «no romper la firma» con
-        // «no dejar mirar».
-        composicion.onNodeWithTag(Herramienta.CONVERTIR.tag).assertIsEnabled()
-        assertTrue(Herramienta.CONVERTIR.disponible(documentoFirmado = true))
+        // Convertir, compartir e imprimir siguen vivas: sólo leen. Negarlas confundiría
+        // «no romper la firma» con «no dejar mirar», y mandar por correo un contrato
+        // firmado es justo lo que se hace con un contrato firmado.
+        listOf(Herramienta.CONVERTIR, Herramienta.COMPARTIR, Herramienta.IMPRIMIR).forEach {
+            composicion.onNodeWithTag(it.tag).assertIsEnabled()
+            assertTrue("${it.etiqueta} se apagó con la firma", it.disponible(documentoFirmado = true))
+        }
     }
 
     private fun visorCon(nombre: String): VisorViewModel {
@@ -227,5 +220,8 @@ class InventarioFase6Test {
 
     private companion object {
         const val PRESUPUESTO_PRUEBA = 32 * 1024 * 1024
+
+        /** Las de la maqueta. Si algún día son ocho o diez, que se entere alguien. */
+        const val NUEVE = 9
     }
 }

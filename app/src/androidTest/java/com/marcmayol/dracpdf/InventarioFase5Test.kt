@@ -138,12 +138,14 @@ class InventarioFase5Test {
         // Lo que ya existe se pulsa…
         composicion.onNodeWithTag(TAG_MENU_DOCUMENTOS).assertIsEnabled()
         composicion.onNodeWithTag(TAG_MENU_ABRIR).assertIsEnabled()
-        // …y lo que llega en fases posteriores se ve apagado, no escondido: un menú
-        // que cambia de largo entre versiones obliga a buscarlo todo otra vez.
+        // …incluidas las propiedades, que las encendió la Fase 7. Este inventario vigila
+        // que el menú siga entero, no que siga siendo el de la Fase 5.
+        composicion.onNodeWithTag(TAG_MENU_PROPIEDADES).assertIsEnabled()
+        // …y lo que aquí no se le ha dado a la pantalla se ve apagado, no escondido: un
+        // menú que cambia de largo entre versiones obliga a buscarlo todo otra vez.
         composicion.onNodeWithTag(TAG_MENU_COPIA).assertIsNotEnabled()
         composicion.onNodeWithTag(TAG_MENU_IMPRIMIR).assertIsNotEnabled()
         composicion.onNodeWithTag(TAG_MENU_COMPARTIR).assertIsNotEnabled()
-        composicion.onNodeWithTag(TAG_MENU_PROPIEDADES).assertIsNotEnabled()
     }
 
     // ------------------------------------------- una barra superior, y sólo una

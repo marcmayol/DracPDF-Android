@@ -13,6 +13,15 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // El APK de instrumentación es una aplicación de verdad y se instala como tal. Un
+    // módulo de biblioteca no tiene targetSdk, así que sin esto su APK de pruebas declara
+    // el mínimo y Android saca «esta app está hecha para una versión anterior» cada vez
+    // que arranca. Pasó de verdad, y en el móvil del titular: aunque el aviso se lo
+    // llevara la desinstalación al terminar la tanda, mientras duró tapó la pantalla.
+    testOptions {
+        targetSdk = 36
+    }
+
     buildFeatures {
         compose = true
     }

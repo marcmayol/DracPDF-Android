@@ -556,6 +556,12 @@ private fun ConservarLaPagina(
     LaunchedEffect(porFila) {
         if (porFila != anterior) {
             anterior = porFila
+            // Al fotograma siguiente y no ahora mismo. Este efecto nace dentro del
+            // `BoxWithConstraints`, que compone a su contenido **durante la medida**, y
+            // pedir un desplazamiento en ese momento revienta con «performMeasureAndLayout
+            // called during measure layout». Salta justo al girar el móvil, que es cuando
+            // cambia el número de páginas por fila y es la única vez que esto se ejecuta.
+            withFrameNanos { }
             lista.scrollToItem(pagina / porFila)
         }
     }

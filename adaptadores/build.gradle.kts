@@ -12,6 +12,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Ver la nota del mismo bloque en `ui/build.gradle.kts`: sin esto, el APK de pruebas
+    // de un módulo de biblioteca declara el SDK mínimo y el sistema avisa al arrancarlo.
+    testOptions {
+        targetSdk = 36
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

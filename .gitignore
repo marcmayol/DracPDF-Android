@@ -28,3 +28,7 @@ keystore.properties
 
 # Caché de los scripts de Python
 __pycache__/
+
+# Las capturas que sacan los tests de `Capturas*Test`. Se regeneran corriéndolos y
+# se miran una vez; versionarlas sería meter dos megas de PNG por cada repaso visual.
+/capturas/

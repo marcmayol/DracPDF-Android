@@ -92,25 +92,45 @@ internal fun HojasSueltas(
 /**
  * Por dónde empieza cada herramienta.
  *
- * Son tres arranques distintos y conviene verlos juntos: unas sólo necesitan saber
- * dónde dejar el resultado, otra pide varios ficheros de entrada, y otras preguntan
- * algo —los rangos, la contraseña— antes incluso de saber qué se va a guardar.
+ * Son cuatro arranques distintos y conviene verlos juntos: unas sólo necesitan saber
+ * dónde dejar el resultado, otra pide varios ficheros de entrada, otras preguntan algo
+ * —los rangos, la contraseña— antes incluso de saber qué se va a guardar, y dos no
+ * escriben nada y se van derechas al sistema.
+ *
+ * **Compartir e imprimir hacen aquí lo mismo que en el menú del documento**, y no otra
+ * cosa parecida. Estaban en la rejilla apagadas de cuando no existían, y una aplicación
+ * que ofrece la misma acción encendida en un sitio y gris en otro no está siendo
+ * prudente: está mintiendo en uno de los dos.
  */
 internal fun arrancar(
     herramienta: Herramienta,
-    alPedirDestino: (Herramienta) -> Unit,
-    alElegirVarios: () -> Unit,
-    alPreguntar: (Herramienta) -> Unit,
+    por: ArranquesDeHerramienta,
 ) {
     when (herramienta) {
-        Herramienta.COMPRIMIR -> alPedirDestino(herramienta)
-        Herramienta.UNIR -> alElegirVarios()
+        Herramienta.COMPRIMIR -> por.alPedirDestino(herramienta)
+        Herramienta.UNIR -> por.alElegirVarios()
         Herramienta.DIVIDIR, Herramienta.PROTEGER, Herramienta.CONVERTIR, Herramienta.ORGANIZAR ->
-            alPreguntar(herramienta)
+            por.alPreguntar(herramienta)
 
+        Herramienta.COMPARTIR -> por.alCompartir()
+        Herramienta.IMPRIMIR -> por.alImprimir()
         else -> Unit
     }
 }
+
+/**
+ * Las cinco maneras de empezar algo, agrupadas.
+ *
+ * Sueltas eran cinco lambdas seguidas en la misma llamada, donde el orden era lo único
+ * que distinguía una de otra; es el mismo motivo por el que existe [AccionesDeFlujo].
+ */
+internal class ArranquesDeHerramienta(
+    val alPedirDestino: (Herramienta) -> Unit,
+    val alElegirVarios: () -> Unit,
+    val alPreguntar: (Herramienta) -> Unit,
+    val alCompartir: () -> Unit,
+    val alImprimir: () -> Unit,
+)
 
 /**
  * Qué hace cada herramienta una vez se sabe dónde va el resultado.

@@ -243,3 +243,16 @@ Abrir el PDF más gordo que haya a mano y hacer scroll rápido, zoom y saltos de
 página.
 
 **Tiene que pasar:** la primera página aparece enseguida y el scroll no se traba.
+
+### 18. Girar el móvil leyendo, y a media lectura
+
+Abrir un documento largo, ir por la página 20 y girar el teléfono a horizontal. Volver
+a vertical. Repetirlo con el zoom puesto y con la doble página elegida a mano.
+
+**Tiene que pasar:** aparecen dos páginas al tumbarlo y vuelve una al levantarlo, sin
+perder por dónde se iba y sin cerrarse.
+
+**Por qué está aquí:** al girar cambia el número de páginas por fila, y el
+desplazamiento que conserva la página se pedía mientras el sistema estaba midiendo la
+pantalla; eso cierra la aplicación. Se cazó en el emulador y está corregido, pero el
+giro depende de cada aparato y del tiempo que tarde en recrearse la pantalla.

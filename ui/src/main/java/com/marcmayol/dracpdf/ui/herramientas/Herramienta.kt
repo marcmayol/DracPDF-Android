@@ -39,11 +39,9 @@ enum class Herramienta(
 /** Si la herramienta se puede usar hoy, con este documento. */
 fun Herramienta.disponible(documentoFirmado: Boolean): Boolean =
     when (this) {
-        // Llegan en fases posteriores y se ven apagadas hasta entonces.
-        Herramienta.COMPARTIR, Herramienta.IMPRIMIR -> false
-        // Convertir sólo lee: sacar el texto de un contrato firmado para leerlo en otro
-        // sitio es legítimo, y negarlo confundiría «no romper la firma» con «no dejar
-        // mirar».
-        Herramienta.CONVERTIR -> true
+        // Convertir, compartir e imprimir sólo leen: sacar el texto de un contrato
+        // firmado para leerlo en otro sitio, mandárselo a alguien o imprimirlo es
+        // legítimo, y negarlo confundiría «no romper la firma» con «no dejar mirar».
+        Herramienta.CONVERTIR, Herramienta.COMPARTIR, Herramienta.IMPRIMIR -> true
         else -> !documentoFirmado
     }

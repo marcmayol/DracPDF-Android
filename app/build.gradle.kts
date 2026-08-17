@@ -51,7 +51,8 @@ android {
         // 36 y no 35: un Android más nuevo que el objetivo de la aplicación por dos
         // versiones enseña el aviso de «esta app está hecha para una versión anterior»
         // cada vez que se abre. Pasó de verdad en el Pixel del titular, que va por
-        // delante del SDK con el que se compilaba.
+        // delante del SDK con el que se compilaba. Los APK de instrumentación tienen el
+        // suyo aparte, en el `testOptions` de cada módulo.
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
