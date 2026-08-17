@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.marcmayol.dracpdf.adaptadores.firmas.AlmacenFirmasFichero
 import com.marcmayol.dracpdf.adaptadores.fixtures.GeneradorFixtures
+import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfAnotaciones
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfContenido
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfDocumentRepository
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfFormService
@@ -17,6 +18,7 @@ import com.marcmayol.dracpdf.dominio.casos.BuscarEnDocumento
 import com.marcmayol.dracpdf.dominio.casos.EstamparFirma
 import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
+import com.marcmayol.dracpdf.dominio.casos.MarcarDocumento
 import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
@@ -83,6 +85,7 @@ class VisorRendimientoTest {
                     BuscarEnDocumento(contenido),
                     contenido,
                     contenido,
+                    MarcarDocumento(MuPdfAnotaciones(sesiones), registro),
                 ),
                 registro,
                 cache,

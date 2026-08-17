@@ -165,9 +165,70 @@ limpio, nunca cerrarse.
 
 ---
 
+## Fase 8 · Marcar y editar
+
+### 12. Un resaltado hecho aquí se ve en otro visor
+
+Es lo que distingue una anotación de verdad de un rectángulo pintado encima, y sólo se
+comprueba abriendo el documento en otro programa.
+
+1. Mantener pulsada una frase → Resaltar. Repetir con Subrayar y Tachar.
+2. Guardar y abrir el PDF en Adobe Acrobat (o en el ordenador).
+
+**Tiene que pasar:** las tres marcas se ven, el texto de debajo **se puede seleccionar
+y buscar**, y Adobe deja borrarlas.
+
+**Si falla:** si el texto de debajo ya no se selecciona, la marca se ha fundido con el
+contenido y eso no es una anotación.
+
+### 13. Corregir un texto no deja el original debajo
+
+1. Corregir una línea del documento por otra más corta.
+2. Guardar, abrir en otro visor y **seleccionar y copiar** esa zona.
+
+**Tiene que pasar:** lo que se copia es el texto nuevo. El viejo no está en ninguna
+parte.
+
+**Si falla:** si aparece el texto original, se está tapando en vez de corregir, que es
+justo lo que esta función promete no hacer.
+
+---
+
+## Fase 9 · Conversiones y escáner
+
+### 14. Los formatos de ofimática abren donde tienen que abrir
+
+Los tests comprueban que el fichero se relee bien aquí; lo que no pueden es abrir Word.
+
+1. Convertir un PDF con títulos y alguna tabla a **Word**, **ODT** y **XLSX**.
+2. Abrir cada uno donde toque: Word o Google Docs, LibreOffice, y Excel o Sheets.
+
+**Tiene que pasar:** abren sin avisos de fichero dañado, el texto está entero y los
+títulos se ven como títulos.
+
+**Si falla:** anotar **qué programa** se queja y qué dice; un ZIP mal montado y un XML
+mal formado dan mensajes distintos.
+
+### 15. Escanear una hoja de verdad
+
+La cámara no se automatiza: esto es de dedo y papel.
+
+1. Menú del inicio → «Escanear con la cámara», y dar el permiso cuando lo pida.
+2. Fotografiar dos o tres hojas, un poco de lado a propósito.
+3. Guardar el PDF.
+
+**Tiene que pasar:** cada hoja sale enderezada y recortada, en el orden en que se
+fotografiaron, y el PDF tiene tantas páginas como hojas.
+
+**Si falla:** si la hoja sale girada o estirada, el problema es la corrección de
+perspectiva; si sale entera con el fondo de la mesa, es que las esquinas se quedaron
+en el borde de la foto.
+
+---
+
 ## Fase 1 · Lo que quedó pendiente de comprobar en aparato real
 
-### 12. Abrir un PDF desde otra aplicación
+### 16. Abrir un PDF desde otra aplicación
 
 Enviar un PDF a DracPDF desde WhatsApp, Gmail y el gestor de archivos.
 
@@ -176,7 +237,7 @@ Enviar un PDF a DracPDF desde WhatsApp, Gmail y el gestor de archivos.
 **Nota:** que el selector del sistema ofrezca «Siempre» y el trato fino de los URI
 efímeros son de la Fase 11, no de ahora; aquí sólo se mira que abra.
 
-### 13. Un documento largo de verdad
+### 17. Un documento largo de verdad
 
 Abrir el PDF más gordo que haya a mano y hacer scroll rápido, zoom y saltos de
 página.

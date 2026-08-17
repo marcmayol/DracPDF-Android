@@ -27,10 +27,24 @@ Qué se puede hacer con un documento:
   una biblioteca para reutilizarla.
 - **Firma digital PAdES**: firmar con un certificado `.p12` propio, con sello visible,
   y comprobar las firmas que ya trae el documento.
-- **Caja de herramientas**: unir, dividir, organizar páginas, proteger y desproteger
-  con contraseña, comprimir y convertir a imágenes o a texto.
+- **Caja de herramientas**: unir, dividir, organizar páginas arrastrándolas, proteger y
+  desproteger con contraseña, comprimir y convertir.
+- **Leer de verdad**: buscar en el documento con los resultados resaltados, seleccionar
+  texto y copiarlo, índice del documento, ir a una página, seguir enlaces —los que
+  salen fuera preguntan antes—, imprimir, y ajustar la vista a ancho, a página, en
+  doble página o girada, con lo elegido guardado.
+- **Recientes**: la aplicación recuerda los documentos por los que has pasado y **por
+  qué página ibas** en cada uno.
+- **Marcar**: resaltar, subrayar, tachar, poner notas y escribir sobre la página, con
+  anotaciones estándar que se ven y se pueden borrar desde cualquier otro visor.
+- **Editar**: añadir y quitar imágenes, y corregir un texto de forma que el original
+  desaparece de verdad en vez de quedarse debajo.
+- **Convertir**: a HTML, Markdown, texto, Word, ODT, RTF, imágenes, y las tablas a CSV
+  o XLSX. Y al revés: hacer un PDF con imágenes, Markdown, HTML o texto.
+- **Escanear**: fotografiar hojas con la cámara, enderezarlas y guardarlas como PDF.
 
 Los documentos firmados se abren bloqueados para edición y ofrecen guardar una copia
-editable, para no romper firmas ajenas sin querer.
+editable, para no romper firmas ajenas sin querer. Los que llegan compartidos desde
+otra aplicación avisan de que son prestados y ofrecen quedárselos.
 
 Tema claro y oscuro, o el del sistema, con la identidad Ladón del escritorio.

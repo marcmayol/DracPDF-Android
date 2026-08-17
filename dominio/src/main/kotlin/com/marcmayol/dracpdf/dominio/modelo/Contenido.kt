@@ -88,6 +88,21 @@ data class EnlacePagina(
 fun RectPt.contiene(punto: PuntoPt): Boolean = punto.x in x0..x1 && punto.y in y0..y1
 
 /**
+ * El rectángulo que abarca a los dos.
+ *
+ * Lo pide todo lo que trabaja sobre una selección de varias líneas y necesita un solo
+ * marco: corregir un texto, por ejemplo, que redacta una zona y no tres renglones
+ * sueltos.
+ */
+fun RectPt.unionCon(otro: RectPt): RectPt =
+    RectPt(
+        x0 = minOf(x0, otro.x0),
+        y0 = minOf(y0, otro.y0),
+        x1 = maxOf(x1, otro.x1),
+        y1 = maxOf(y1, otro.y1),
+    )
+
+/**
  * Lo que el documento dice de sí mismo.
  *
  * Todo es opcional porque en un PDF todo lo es: la mitad de los documentos del mundo

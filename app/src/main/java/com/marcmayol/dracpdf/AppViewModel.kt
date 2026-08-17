@@ -11,6 +11,7 @@ import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
 import com.marcmayol.dracpdf.dominio.modelo.ErrorDocumento
 import com.marcmayol.dracpdf.dominio.modelo.IdDocumento
 import com.marcmayol.dracpdf.dominio.modelo.OrigenDocumento
+import com.marcmayol.dracpdf.dominio.puertos.DocumentRepository
 import com.marcmayol.dracpdf.dominio.puertos.DocumentoReciente
 import com.marcmayol.dracpdf.dominio.registro.EstadoDocumento
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
@@ -44,7 +45,13 @@ sealed interface EstadoApp {
 /**
  * Abre documentos. Es lo único que hace, y por eso es pequeño: el visor tiene su
  * propio modelo y el dominio ya sabe qué es un documento.
+ *
+ * Siete dependencias que son siete casos de uso, no siete opciones de configuración:
+ * abrir, cerrar, el registro, dibujar, firmar, recordar y el motor. Agruparlas en un
+ * bulto para bajar la cuenta escondería cuál usa cada función, que es justo lo que aquí
+ * se lee de un vistazo.
  */
+@Suppress("LongParameterList")
 class AppViewModel(
     private val abrirDocumento: AbrirDocumento,
     private val cerrarDocumento: CerrarDocumento,
@@ -52,6 +59,7 @@ class AppViewModel(
     private val renderizarPagina: RenderizarPagina? = null,
     private val firmarDocumento: FirmarDocumento? = null,
     private val recordar: RecordarDocumentos? = null,
+    private val repositorio: DocumentRepository? = null,
 ) : ViewModel() {
     private val _recientes = MutableStateFlow<List<DocumentoReciente>>(emptyList())
 
@@ -168,6 +176,29 @@ class AppViewModel(
             refrescarAbiertos()
             refrescarRecientes()
             _estado.value = EstadoApp.Inicio
+        }
+    }
+
+    /**
+     * Guarda el documento abierto en otro sitio.
+     *
+     * Es lo que rescata un documento prestado: el que llegó compartido desde otra
+     * aplicación deja de poder abrirse en cuanto el sistema retira el permiso, y esta
+     * es la única manera de quedárselo. Lo que se escribe es **lo que hay en memoria**,
+     * con los cambios sin guardar incluidos, que es lo que el usuario está viendo.
+     */
+    fun guardarCopia(
+        id: IdDocumento,
+        destino: OrigenDocumento,
+    ) {
+        val motor = repositorio ?: return
+        viewModelScope.launch {
+            val hecho = withContext(Dispatchers.IO) { runCatching { motor.copiarA(id, destino) } }
+            _estado.value =
+                hecho.fold(
+                    onSuccess = { _estado.value },
+                    onFailure = { fallo -> estadoDelFallo(destino, null, fallo) },
+                )
         }
     }
 

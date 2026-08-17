@@ -5,13 +5,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marcmayol.dracpdf.adaptadores.ajustes.AjustesDeInterfaz
 import com.marcmayol.dracpdf.dominio.casos.BuscarEnDocumento
+import com.marcmayol.dracpdf.dominio.casos.EditarContenido
 import com.marcmayol.dracpdf.dominio.casos.EstamparFirma
 import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
+import com.marcmayol.dracpdf.dominio.casos.MarcarDocumento
 import com.marcmayol.dracpdf.dominio.casos.RellenarCampo
 import com.marcmayol.dracpdf.dominio.casos.RenderizarPagina
+import com.marcmayol.dracpdf.dominio.modelo.Anotacion
 import com.marcmayol.dracpdf.dominio.modelo.CampoFormulario
 import com.marcmayol.dracpdf.dominio.modelo.Coincidencia
+import com.marcmayol.dracpdf.dominio.modelo.ColorAnotacion
 import com.marcmayol.dracpdf.dominio.modelo.DestinoEnlace
 import com.marcmayol.dracpdf.dominio.modelo.EnlacePagina
 import com.marcmayol.dracpdf.dominio.modelo.EntradaIndice
@@ -25,8 +29,10 @@ import com.marcmayol.dracpdf.dominio.modelo.PuntoPt
 import com.marcmayol.dracpdf.dominio.modelo.RectPt
 import com.marcmayol.dracpdf.dominio.modelo.SeleccionTexto
 import com.marcmayol.dracpdf.dominio.modelo.TamanoPt
+import com.marcmayol.dracpdf.dominio.modelo.TipoAnotacion
 import com.marcmayol.dracpdf.dominio.modelo.TipoCampo
 import com.marcmayol.dracpdf.dominio.modelo.TipoFormulario
+import com.marcmayol.dracpdf.dominio.modelo.unionCon
 import com.marcmayol.dracpdf.dominio.puertos.EstructuraPdf
 import com.marcmayol.dracpdf.dominio.puertos.TextoPdf
 import com.marcmayol.dracpdf.dominio.registro.RegistroDocumentos
@@ -96,6 +102,8 @@ data class EstadoVisor(
     val propiedades: PropiedadesDocumento? = null,
     /** Si queda algún cambio del formulario por deshacer. */
     val hayQueDeshacer: Boolean = false,
+    /** Las marcas de la página actual, cuando se han pedido. */
+    val anotaciones: List<Anotacion> = emptyList(),
     /**
      * Cómo se está enseñando el documento. Va en el estado del visor y no en uno
      * propio porque cambia lo mismo que cambia el zoom —cuánto mide una página en
@@ -147,6 +155,10 @@ class CasosDelVisor(
     val buscar: BuscarEnDocumento,
     val texto: TextoPdf,
     val estructura: EstructuraPdf,
+    /** Marcar el documento: lo de la Fase 8. */
+    val marcar: MarcarDocumento,
+    /** Y editar su contenido: imágenes y corrección de texto. */
+    val editar: EditarContenido,
 )
 
 /**
@@ -1168,6 +1180,123 @@ class VisorViewModel(
             val nueva = enElMotor { casos.texto.seleccionEntre(id, actual.pagina, desde, hasta) } ?: return@launch
             _estado.value =
                 _estado.value.copy(seleccion = actual.copy(desde = desde, hasta = hasta, seleccion = nueva))
+        }
+    }
+
+    /**
+     * Marca lo que hay seleccionado y suelta la selección.
+     *
+     * Se suelta a propósito: la marca ya está puesta y **se ve**, así que dejar encima
+     * las asas de la selección sólo taparía lo que se acaba de hacer.
+     */
+    fun marcarSeleccion(
+        tipo: TipoAnotacion,
+        color: ColorAnotacion = ColorAnotacion.AMARILLO,
+    ) {
+        val seleccion = _estado.value.seleccion ?: return
+        val id = _estado.value.id ?: return
+        if (seleccion.seleccion.marcos.isEmpty()) return
+
+        viewModelScope.launch {
+            val hecho =
+                runCatching {
+                    withContext(dispatcherRender) {
+                        casos.marcar.marcar(id, seleccion.pagina, tipo, seleccion.seleccion.marcos, color)
+                    }
+                }
+            hecho
+                .onSuccess {
+                    // La página cambia: hay que tirar su render o la marca no se vería
+                    // hasta salir y volver a entrar.
+                    cache.olvidar(seleccion.pagina)
+                    _paginas.value = _paginas.value.filterKeys { it.pagina != seleccion.pagina }
+                    _estado.value =
+                        _estado.value.copy(
+                            modo = ModoVisor.Lectura,
+                            seleccion = null,
+                            cambiosSinGuardar = true,
+                            error = null,
+                        )
+                    pedir(id, seleccion.pagina, _estado.value.zoom)
+                }.onFailure { fallo -> _estado.value = _estado.value.copy(error = mensajeDe(fallo)) }
+        }
+    }
+
+    /** Las marcas de la página que se está mirando, para poder quitarlas. */
+    fun cargarAnotaciones() {
+        val estado = _estado.value
+        val id = estado.id ?: return
+        viewModelScope.launch {
+            val marcas = enElMotor { casos.marcar.listar(id, estado.paginaActual) } ?: return@launch
+            _estado.value = _estado.value.copy(anotaciones = marcas)
+        }
+    }
+
+    /**
+     * Quita una marca y vuelve a dibujar la página.
+     *
+     * Se recarga la lista después de borrar porque las posiciones se corren: la marca
+     * que era la 3 pasa a ser la 2, y con la lista vieja el siguiente borrado se
+     * llevaría otra distinta.
+     */
+    fun borrarAnotacion(anotacion: Anotacion) {
+        val id = _estado.value.id ?: return
+        viewModelScope.launch {
+            val hecho =
+                runCatching {
+                    withContext(dispatcherRender) { casos.marcar.borrar(id, anotacion.pagina, anotacion.posicion) }
+                }
+            hecho
+                .onSuccess {
+                    cache.olvidar(anotacion.pagina)
+                    _paginas.value = _paginas.value.filterKeys { it.pagina != anotacion.pagina }
+                    _estado.value = _estado.value.copy(cambiosSinGuardar = true, error = null)
+                    pedir(id, anotacion.pagina, _estado.value.zoom)
+                    cargarAnotaciones()
+                }.onFailure { fallo -> _estado.value = _estado.value.copy(error = mensajeDe(fallo)) }
+        }
+    }
+
+    /**
+     * Cambia el texto seleccionado por otro.
+     *
+     * El original **desaparece** del documento: es una redacción de verdad y no un
+     * parche encima, que es lo único que se puede llamar corregir en algo que otro va
+     * a leer con otra herramienta.
+     *
+     * Si el texto nuevo no cabe en el hueco del viejo no se recorta ni se encoge la
+     * letra sin decirlo: se avisa y el documento se queda como estaba.
+     */
+    fun corregirSeleccion(nuevo: String) {
+        val seleccion = _estado.value.seleccion ?: return
+        val id = _estado.value.id ?: return
+        val marco = seleccion.seleccion.marcos.reduceOrNull { uno, otro -> uno.unionCon(otro) } ?: return
+
+        viewModelScope.launch {
+            val hecho =
+                runCatching {
+                    withContext(dispatcherRender) { casos.editar.corregirTexto(id, seleccion.pagina, marco, nuevo) }
+                }
+            hecho
+                .onSuccess { cabia ->
+                    if (cabia) {
+                        cache.olvidar(seleccion.pagina)
+                        _paginas.value = _paginas.value.filterKeys { it.pagina != seleccion.pagina }
+                        _estado.value =
+                            _estado.value.copy(
+                                modo = ModoVisor.Lectura,
+                                seleccion = null,
+                                cambiosSinGuardar = true,
+                                error = null,
+                            )
+                        pedir(id, seleccion.pagina, _estado.value.zoom)
+                    } else {
+                        _estado.value =
+                            _estado.value.copy(
+                                error = "El texto nuevo no cabe donde estaba el viejo. Prueba con uno más corto.",
+                            )
+                    }
+                }.onFailure { fallo -> _estado.value = _estado.value.copy(error = mensajeDe(fallo)) }
         }
     }
 

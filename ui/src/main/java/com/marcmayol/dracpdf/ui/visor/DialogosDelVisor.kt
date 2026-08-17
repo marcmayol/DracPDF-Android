@@ -8,9 +8,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -132,6 +137,56 @@ private const val UN_KILO = 1024L
 private const val UN_MEGA = UN_KILO * UN_KILO
 private const val ANCHO_ETIQUETA = 0.42f
 private const val ANCHO_VALOR = 0.58f
+
+/**
+ * Cambiar un texto del documento por otro.
+ *
+ * El aviso no es de cortesía: lo que se corrige **se borra del PDF**, y quien lo hace
+ * tiene que saber que el original no queda debajo por si acaso. Es justo lo que
+ * distingue esta función de tapar algo con un rectángulo, y por eso se dice aquí y no
+ * en la documentación.
+ */
+@Composable
+fun DialogoCorregirTexto(
+    original: String,
+    alCorregir: (String) -> Unit,
+    alCancelar: () -> Unit,
+) {
+    var texto by remember { mutableStateOf(original) }
+
+    AlertDialog(
+        onDismissRequest = alCancelar,
+        title = { Text("Corregir el texto") },
+        text = {
+            Column {
+                Text(
+                    text = "Lo que había desaparece del documento; no se queda debajo.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = texto,
+                    onValueChange = { texto = it },
+                    label = { Text("Texto nuevo") },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag(TAG_CAMPO_CORRECCION),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { alCorregir(texto) },
+                enabled = texto.isNotBlank() && texto != original,
+                modifier = Modifier.testTag(TAG_CORREGIR_ACEPTAR),
+            ) { Text("Corregir") }
+        },
+        dismissButton = { TextButton(onClick = alCancelar) { Text("Cancelar") } },
+        modifier = Modifier.testTag(TAG_DIALOGO_CORREGIR),
+    )
+}
+
+const val TAG_DIALOGO_CORREGIR = "dialogo_corregir"
+const val TAG_CAMPO_CORRECCION = "corregir_campo"
+const val TAG_CORREGIR_ACEPTAR = "corregir_aceptar"
 
 const val TAG_DIALOGO_ENLACE = "dialogo_enlace"
 const val TAG_ENLACE_URL = "enlace_url"

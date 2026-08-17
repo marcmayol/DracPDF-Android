@@ -23,6 +23,7 @@ import com.marcmayol.dracpdf.dominio.puertos.FormatoSalida
 import com.marcmayol.dracpdf.dominio.puertos.FormatoTabla
 import com.marcmayol.dracpdf.dominio.puertos.PaginaOrdenada
 import com.marcmayol.dracpdf.dominio.puertos.Progreso
+import com.marcmayol.dracpdf.dominio.puertos.TipoDeEntrada
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -263,6 +265,35 @@ class HerramientasViewModel(
         } else {
             "PDF creado con $paginas ${if (paginas == 1) "página" else "páginas"}"
         }
+    }
+
+    /**
+     * Monta el PDF de una tanda de escaneo.
+     *
+     * El destino es un fichero de la propia aplicación y no un sitio elegido por el
+     * usuario: lo que se acaba de escanear no existía hace un minuto, así que primero
+     * se abre para verlo y ya se decide después si se guarda en otro sitio, se comparte
+     * o se tira.
+     */
+    fun crearPdfDesdeEscaneo(
+        recortes: List<File>,
+        carpeta: File,
+    ) = enMarcha(Herramienta.CONVERTIR) { progreso ->
+        val destino = File(carpeta, "escaneo-${System.currentTimeMillis()}.pdf")
+        val entradas =
+            recortes.map { fichero ->
+                EntradaAConvertir(
+                    OrigenDocumento.Privado(fichero.absolutePath, fichero.name),
+                    TipoDeEntrada.IMAGEN,
+                )
+            }
+        val paginas =
+            casos.crearPdf.invoke(
+                entradas,
+                OrigenDocumento.Privado(destino.absolutePath, destino.name),
+                progreso,
+            )
+        if (paginas == 0) "No se ha escaneado ninguna hoja" else "PDF de $paginas hojas escaneadas"
     }
 
     fun convertirATexto(

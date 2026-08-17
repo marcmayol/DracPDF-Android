@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.marcmayol.dracpdf.dominio.modelo.TipoAnotacion
 import com.marcmayol.dracpdf.ui.iconos.BotonIconoLadon
 import com.marcmayol.dracpdf.ui.iconos.EstadoIcono
 import com.marcmayol.dracpdf.ui.iconos.IconoLadon
@@ -52,6 +53,7 @@ fun BarraSuperiorVisor(
     alCompartir: (() -> Unit)? = null,
     alVerPropiedades: (() -> Unit)? = null,
     alAjustarLaVista: (() -> Unit)? = null,
+    alGuardarCopia: (() -> Unit)? = null,
 ) {
     Row(
         modifier =
@@ -161,6 +163,13 @@ fun BarraSuperiorVisor(
                             it()
                         }
                     },
+                alGuardarCopia =
+                    alGuardarCopia?.let {
+                        {
+                            menuAbierto = false
+                            it()
+                        }
+                    },
             )
         }
     }
@@ -193,6 +202,7 @@ private fun MenuDelVisor(
     alImprimir: (() -> Unit)? = null,
     alCompartir: (() -> Unit)? = null,
     alVerPropiedades: (() -> Unit)? = null,
+    alGuardarCopia: (() -> Unit)? = null,
 ) {
     DropdownMenu(
         expanded = abierto,
@@ -217,7 +227,7 @@ private fun MenuDelVisor(
             alPulsar = alAbrirOtro,
             tag = TAG_MENU_ABRIR,
         )
-        EntradaDeMenu("Guardar una copia", IconosLadon.guardar, tag = TAG_MENU_COPIA)
+        EntradaDeMenu("Guardar una copia", IconosLadon.guardar, tag = TAG_MENU_COPIA, alPulsar = alGuardarCopia)
         EntradaDeMenu("Imprimir", IconosLadon.imprimir, tag = TAG_MENU_IMPRIMIR, alPulsar = alImprimir)
         EntradaDeMenu("Compartir", IconosLadon.compartir, tag = TAG_MENU_COMPARTIR, alPulsar = alCompartir)
         EntradaDeMenu("Propiedades", IconosLadon.propiedades, tag = TAG_MENU_PROPIEDADES, alPulsar = alVerPropiedades)
@@ -333,6 +343,8 @@ fun BarraDelModo(
     alAbrirFirmas: () -> Unit,
     alCopiar: () -> Unit,
     alCompartir: () -> Unit,
+    alMarcar: ((TipoAnotacion) -> Unit)?,
+    alCorregir: (() -> Unit)?,
     alDeshacer: () -> Unit,
     hayQueDeshacer: Boolean,
     campos: Int,
@@ -376,7 +388,13 @@ fun BarraDelModo(
             )
 
         ModoVisor.SeleccionarTexto ->
-            BarraSeleccion(alCopiar = alCopiar, alCompartir = alCompartir, modifier = modifier)
+            BarraSeleccion(
+                alCopiar = alCopiar,
+                alCompartir = alCompartir,
+                alMarcar = alMarcar,
+                alCorregir = alCorregir,
+                modifier = modifier,
+            )
 
         // Buscar no pone barra abajo: sus dos flechas y su contador están arriba, junto
         // al campo, y una segunda barra sólo taparía documento mientras se lee lo que se
@@ -397,6 +415,8 @@ fun BarraSeleccion(
     alCopiar: () -> Unit,
     alCompartir: () -> Unit,
     modifier: Modifier = Modifier,
+    alMarcar: ((TipoAnotacion) -> Unit)? = null,
+    alCorregir: (() -> Unit)? = null,
 ) {
     Row(
         modifier =
@@ -411,6 +431,22 @@ fun BarraSeleccion(
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         AccionDeTexto("Copiar", IconosLadon.copiar, TAG_SELECCION_COPIAR, alCopiar)
+        // Las tres marcas van con el texto seleccionado porque es cuando tienen
+        // sentido: se resalta lo que se acaba de señalar, no «una zona» de la página.
+        if (alMarcar != null) {
+            AccionDeTexto("Resaltar", IconosLadon.resaltar, TAG_SELECCION_RESALTAR) {
+                alMarcar(TipoAnotacion.RESALTADO)
+            }
+            AccionDeTexto("Subrayar", IconosLadon.subrayar, TAG_SELECCION_SUBRAYAR) {
+                alMarcar(TipoAnotacion.SUBRAYADO)
+            }
+            AccionDeTexto("Tachar", IconosLadon.tachar, TAG_SELECCION_TACHAR) {
+                alMarcar(TipoAnotacion.TACHADO)
+            }
+        }
+        if (alCorregir != null) {
+            AccionDeTexto("Corregir", IconosLadon.corregirTexto, TAG_SELECCION_CORREGIR, alCorregir)
+        }
         AccionDeTexto("Compartir", IconosLadon.compartir, TAG_SELECCION_COMPARTIR, alCompartir)
     }
 }
@@ -717,6 +753,10 @@ const val TAG_MODO_ACCION = "visor_modo_accion"
 
 const val TAG_BARRA_SELECCION = "visor_barra_seleccion"
 const val TAG_SELECCION_COPIAR = "seleccion_copiar"
+const val TAG_SELECCION_RESALTAR = "seleccion_resaltar"
+const val TAG_SELECCION_SUBRAYAR = "seleccion_subrayar"
+const val TAG_SELECCION_TACHAR = "seleccion_tachar"
+const val TAG_SELECCION_CORREGIR = "seleccion_corregir"
 const val TAG_SELECCION_COMPARTIR = "seleccion_compartir"
 
 const val TAG_BARRA_COLOCACION = "visor_barra_colocacion"

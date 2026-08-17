@@ -106,6 +106,12 @@ fun PantallaVisor(
     /** Imprimir y compartir salen de aquí porque necesitan el fichero, no el documento. */
     alImprimir: (() -> Unit)? = null,
     alCompartirDocumento: (() -> Unit)? = null,
+    /**
+     * Guardar una copia. Llega puesto **sobre todo para los documentos prestados**: los
+     * que vienen de otra aplicación se abren con un permiso que muere con la sesión, y
+     * quedarse con ellos exige sacarlos a un sitio propio.
+     */
+    alGuardarCopia: (() -> Unit)? = null,
 ) {
     val estado by modelo.estado.collectAsState()
     val paginas by modelo.paginas.collectAsState()
@@ -119,12 +125,12 @@ fun PantallaVisor(
     // el bitmap que ya hay —gratis, lo hace la GPU— y el render nítido se pide cuando
     // el dedo se detiene. Rasterizar por fotograma daría un tirón en cada uno.
     var zoomVivo by remember { mutableFloatStateOf(estado.zoom) }
-    var indiceAbierto by remember { mutableStateOf(false) }
-    var vistaAbierta by remember { mutableStateOf(false) }
+    val aperturas = remember { AperturasDelVisor() }
+
+    /** El texto que se está corrigiendo, si hay alguno en el aire. */
+    var corrigiendo by remember { mutableStateOf<String?>(null) }
     var saltarA by remember { mutableStateOf<Int?>(null) }
-    var opcionesDe by remember { mutableStateOf<CampoFormulario?>(null) }
     var firmasAbiertas by remember { mutableStateOf(false) }
-    var herramientasAbiertas by remember { mutableStateOf(false) }
     var dibujando by remember { mutableStateOf(false) }
 
     // La imagen de la firma que se está colocando sale de la misma caché de
@@ -187,7 +193,8 @@ fun PantallaVisor(
                     alAbrirOtro = alAbrirOtro,
                     alImprimir = alImprimir,
                     alCompartirDocumento = alCompartirDocumento,
-                    alAjustarLaVista = { vistaAbierta = true },
+                    alGuardarCopia = alGuardarCopia,
+                    alAjustarLaVista = { aperturas.vista = true },
                 )
             }
 
@@ -206,7 +213,7 @@ fun PantallaVisor(
                     tamanoDe = modelo::tamanoDe,
                     // Cada tipo de campo se toca de una manera: una casilla cambia sola,
                     // una elección abre su lista, y un texto se pone a esperar teclas.
-                    alTocarCampo = { campo -> tocarCampo(modelo, campo) { opcionesDe = campo } },
+                    alTocarCampo = { campo -> tocarCampo(modelo, campo) { aperturas.opcionesDe = campo } },
                     alEscribirCampo = { campo, valor -> modelo.escribirTexto(campo.id, valor) },
                     alIrAlSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
                     firmaEnMano = firmaEnMano,
@@ -245,9 +252,9 @@ fun PantallaVisor(
             AnimatedVisibility(visible = estado.chromeVisible, enter = fadeIn(), exit = fadeOut()) {
                 BarraDelModo(
                     modo = estado.modo,
-                    alAbrirIndice = { indiceAbierto = true },
+                    alAbrirIndice = { aperturas.indice = true },
                     alEntrarEnFormulario = modelo::entrarEnFormulario,
-                    alAbrirHerramientas = { herramientasAbiertas = true },
+                    alAbrirHerramientas = { aperturas.herramientas = true },
                     alCampoAnterior = { modelo.irACampo(Direccion.ANTERIOR) },
                     alCampoSiguiente = { modelo.irACampo(Direccion.SIGUIENTE) },
                     alConfirmarColocacion = modelo::confirmarColocacion,
@@ -269,6 +276,8 @@ fun PantallaVisor(
                             ?.texto
                             ?.let { Compartir.texto(contexto, it) }
                     },
+                    alMarcar = { tipo -> modelo.marcarSeleccion(tipo) },
+                    alCorregir = { corrigiendo = estado.seleccion?.seleccion?.texto },
                     alDeshacer = modelo::deshacer,
                     hayQueDeshacer = estado.hayQueDeshacer,
                     hayCampoAnterior = estado.hayCampoAnterior,
@@ -281,14 +290,14 @@ fun PantallaVisor(
             }
         }
 
-        if (vistaAbierta) {
+        if (aperturas.vista) {
             HojaVista(
                 vista = estado.vista,
                 cabenDosPaginas = cabenDos,
                 alAjustar = modelo::ajustarLaVista,
                 alAlternarDoblePagina = modelo::alternarDoblePagina,
                 alGirar = modelo::girarLaVista,
-                alCerrar = { vistaAbierta = false },
+                alCerrar = { aperturas.vista = false },
             )
         }
 
@@ -327,37 +336,103 @@ fun PantallaVisor(
         },
     )
 
-    opcionesDe?.let { campo ->
+    corrigiendo?.let { original ->
+        DialogoCorregirTexto(
+            original = original,
+            alCorregir = { nuevo ->
+                corrigiendo = null
+                modelo.corregirSeleccion(nuevo)
+            },
+            alCancelar = { corrigiendo = null },
+        )
+    }
+
+    HojasDelVisor(
+        estado = estado,
+        modelo = modelo,
+        aperturas = aperturas,
+        alElegirHerramienta = alElegirHerramienta,
+        alSaltarA = { saltarA = it },
+    )
+}
+
+/**
+ * Qué hojas hay abiertas ahora mismo.
+ *
+ * Van en un solo objeto y no en cinco banderas sueltas porque **son excluyentes en la
+ * práctica**: sólo hay un dedo y una pantalla. Tenerlas juntas evita además que la
+ * pantalla del visor tenga que llevar cinco `remember` que nadie más mira.
+ */
+private class AperturasDelVisor {
+    var indice by mutableStateOf(false)
+    var vista by mutableStateOf(false)
+    var herramientas by mutableStateOf(false)
+    var anotaciones by mutableStateOf(false)
+    var opcionesDe by mutableStateOf<CampoFormulario?>(null)
+}
+
+/**
+ * Las hojas que se abren desde el visor: opciones de un campo, marcas, herramientas e
+ * índice.
+ *
+ * Están fuera de la pantalla porque son cuatro ramas que no tienen que ver con enseñar
+ * páginas, y ahí dentro sólo servían para que la función creciera.
+ */
+@Composable
+private fun HojasDelVisor(
+    estado: EstadoVisor,
+    modelo: VisorViewModel,
+    aperturas: AperturasDelVisor,
+    alElegirHerramienta: (Herramienta) -> Unit,
+    alSaltarA: (Int) -> Unit,
+) {
+    aperturas.opcionesDe?.let { campo ->
         HojaOpciones(
             campo = campo,
             alElegir = { opcion ->
                 modelo.elegirOpcion(campo.id, opcion)
-                opcionesDe = null
+                aperturas.opcionesDe = null
             },
-            alCerrar = { opcionesDe = null },
+            alCerrar = { aperturas.opcionesDe = null },
         )
     }
 
-    if (herramientasAbiertas) {
+    if (aperturas.anotaciones) {
+        LaunchedEffect(Unit) { modelo.cargarAnotaciones() }
+        HojaAnotaciones(
+            pagina = estado.paginaActual,
+            anotaciones = estado.anotaciones,
+            alBorrar = modelo::borrarAnotacion,
+            alCerrar = { aperturas.anotaciones = false },
+        )
+    }
+
+    if (aperturas.herramientas) {
         HojaHerramientas(
             alElegir = { herramienta ->
-                herramientasAbiertas = false
-                alElegirHerramienta(herramienta)
+                aperturas.herramientas = false
+                // Las marcas se gestionan aquí dentro y no salen a la actividad: no
+                // escriben ficheros nuevos, tocan el documento que ya está abierto.
+                if (herramienta == Herramienta.ANOTACIONES) {
+                    aperturas.anotaciones = true
+                } else {
+                    alElegirHerramienta(herramienta)
+                }
             },
-            alCerrar = { herramientasAbiertas = false },
+            alCerrar = { aperturas.herramientas = false },
             documentoFirmado = estado.firmado,
         )
     }
 
-    if (indiceAbierto) {
+    if (aperturas.indice) {
         HojaDelIndice(
             estado = estado,
             modelo = modelo,
             alElegirPagina = { pagina ->
-                indiceAbierto = false
-                saltarA = pagina
+                aperturas.indice = false
+                alSaltarA(pagina)
             },
-            alCerrar = { indiceAbierto = false },
+            alCerrar = { aperturas.indice = false },
         )
     }
 }
@@ -377,6 +452,22 @@ private fun DialogosDelDocumento(
 ) {
     val contexto = LocalContext.current
 
+    AvisosDelVisor(estado = estado, modelo = modelo, contexto = contexto)
+}
+
+/**
+ * Lo que el visor tiene que decir por encima de todo lo demás: un error, un enlace que
+ * pregunta antes de salir fuera, y la ficha del documento.
+ *
+ * Van juntos y aparte porque los tres se dibujan sobre cualquier modo y ninguno
+ * depende de qué pantalla hay debajo.
+ */
+@Composable
+private fun AvisosDelVisor(
+    estado: EstadoVisor,
+    modelo: VisorViewModel,
+    contexto: android.content.Context,
+) {
     estado.error?.let { error ->
         BandaError(mensaje = error, alDescartar = modelo::descartarError)
     }
@@ -468,6 +559,7 @@ private fun BarraDeArriba(
     alAbrirOtro: () -> Unit,
     alImprimir: (() -> Unit)?,
     alCompartirDocumento: (() -> Unit)?,
+    alGuardarCopia: (() -> Unit)?,
     alAjustarLaVista: () -> Unit,
 ) {
     when (estado.modo) {
@@ -512,6 +604,7 @@ private fun BarraDeArriba(
                 alImprimir = alImprimir,
                 alCompartir = alCompartirDocumento,
                 alVerPropiedades = modelo::verPropiedades,
+                alGuardarCopia = alGuardarCopia,
                 alAjustarLaVista = alAjustarLaVista,
             )
     }

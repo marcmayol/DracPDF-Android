@@ -174,9 +174,20 @@ class Grafo(
             buscar = buscarEnDocumento,
             texto = contenido,
             estructura = contenido,
+            marcar = marcarDocumento,
+            editar = editarContenido,
         )
 
     val cachePaginas = CachePaginas(CachePaginas.presupuestoPara(contexto))
+
+    /**
+     * Donde el escáner deja sus fotos mientras dura la tanda.
+     *
+     * En la caché y no en el almacenamiento privado a propósito: son ficheros de
+     * trabajo que dejan de importar en cuanto el PDF está hecho, y si el sistema anda
+     * justo de espacio puede llevárselos sin romper nada.
+     */
+    val carpetaDeEscaneos = File(contexto.cacheDir, CARPETA_ESCANEOS)
 
     /**
      * El fichero que se le entrega al servicio de impresión del sistema.
@@ -216,5 +227,6 @@ class Grafo(
         const val FICHERO_RECIENTES = "recientes.json"
         const val CARPETA_COPIAS = "para-firmar"
         const val CARPETA_TEMPORALES = "temporales"
+        const val CARPETA_ESCANEOS = "escaneos"
     }
 }

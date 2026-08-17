@@ -2,11 +2,8 @@ package com.marcmayol.dracpdf
 
 import android.os.ParcelFileDescriptor
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -101,12 +98,19 @@ class CapturasFase7Test {
         composicion.waitForIdle()
     }
 
+    /**
+     * Una captura de **toda la pantalla**, hecha por el sistema.
+     *
+     * No vale capturar el nodo de Compose: las hojas y los diálogos viven en su propia
+     * ventana, y desde el árbol de la pantalla principal no se pueden fotografiar. Esto
+     * es lo mismo que ve el usuario, que es de lo que va una captura.
+     */
     private fun guardar(
         nombre: String,
         tag: String? = null,
     ) {
-        val nodo = if (tag == null) composicion.onRoot() else composicion.onNodeWithTag(tag)
-        val mapa = nodo.captureToImage().asAndroidBitmap()
+        composicion.waitForIdle()
+        val mapa = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         val destino = File(contexto.getExternalFilesDir(null), "$nombre.png")
         FileOutputStream(destino).use { salida ->
             mapa.compress(android.graphics.Bitmap.CompressFormat.PNG, CALIDAD_PNG, salida)
