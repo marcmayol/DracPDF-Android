@@ -1300,6 +1300,40 @@ class VisorViewModel(
         }
     }
 
+    /**
+     * Pone una imagen en la página que se está mirando.
+     *
+     * Nace centrada y ocupando un tercio del ancho, como la firma: es un tamaño con el
+     * que se ve qué es y desde el que se puede juzgar si hace falta moverla. Colocarla
+     * a mano llega con el modo de colocación, que ya existe para las firmas.
+     */
+    fun anadirImagen(imagen: ByteArray) {
+        val estado = _estado.value
+        val id = estado.id ?: return
+        val tamano = tamanoDe(estado.paginaActual) ?: return
+
+        val ancho = tamano.ancho * FRACCION_INICIAL_DE_ANCHO
+        val alto = ancho
+        val x = (tamano.ancho - ancho) / 2f
+        val y = (tamano.alto - alto) / 2f
+
+        viewModelScope.launch {
+            val hecho =
+                runCatching {
+                    withContext(dispatcherRender) {
+                        casos.editar.anadirImagen(id, estado.paginaActual, RectPt(x, y, x + ancho, y + alto), imagen)
+                    }
+                }
+            hecho
+                .onSuccess {
+                    cache.olvidar(estado.paginaActual)
+                    _paginas.value = _paginas.value.filterKeys { it.pagina != estado.paginaActual }
+                    _estado.value = _estado.value.copy(cambiosSinGuardar = true, error = null)
+                    pedir(id, estado.paginaActual, _estado.value.zoom)
+                }.onFailure { fallo -> _estado.value = _estado.value.copy(error = mensajeDe(fallo)) }
+        }
+    }
+
     /** Suelta la selección y vuelve a leer. */
     fun soltarSeleccion() {
         _estado.value = _estado.value.copy(modo = ModoVisor.Lectura, seleccion = null)

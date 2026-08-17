@@ -1,5 +1,7 @@
 package com.marcmayol.dracpdf.ui.visor
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -386,6 +388,18 @@ private fun HojasDelVisor(
     alElegirHerramienta: (Herramienta) -> Unit,
     alSaltarA: (Int) -> Unit,
 ) {
+    val contexto = LocalContext.current
+
+    // La imagen se lee aquí y se le pasan los bytes al modelo: el dominio no sabe qué
+    // es un `content://`, y tampoco tiene por qué.
+    val elegirImagen =
+        rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let {
+                val bytes = runCatching { contexto.contentResolver.openInputStream(it)?.use { f -> f.readBytes() } }
+                bytes.getOrNull()?.let(modelo::anadirImagen)
+            }
+        }
+
     aperturas.opcionesDe?.let { campo ->
         HojaOpciones(
             campo = campo,
@@ -404,6 +418,10 @@ private fun HojasDelVisor(
             anotaciones = estado.anotaciones,
             alBorrar = modelo::borrarAnotacion,
             alCerrar = { aperturas.anotaciones = false },
+            alAnadirImagen = {
+                aperturas.anotaciones = false
+                elegirImagen.launch("image/*")
+            },
         )
     }
 

@@ -49,6 +49,7 @@ fun HojaAnotaciones(
     alBorrar: (Anotacion) -> Unit,
     alCerrar: () -> Unit,
     modifier: Modifier = Modifier,
+    alAnadirImagen: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = alCerrar,
@@ -63,6 +64,18 @@ fun HojaAnotaciones(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
+
+            if (alAnadirImagen != null) {
+                // Poner una imagen vive aquí, con lo demás que se añade encima del
+                // documento, y no en la caja de herramientas: las herramientas escriben
+                // ficheros nuevos y esto toca el documento que está abierto.
+                FilaDeAccion(
+                    titulo = "Añadir una imagen",
+                    icono = IconosLadon.anadirImagen,
+                    tag = TAG_ANADIR_IMAGEN,
+                    alPulsar = alAnadirImagen,
+                )
+            }
 
             if (anotaciones.isEmpty()) {
                 Text(
@@ -81,6 +94,32 @@ fun HojaAnotaciones(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FilaDeAccion(
+    titulo: String,
+    icono: Int,
+    tag: String,
+    alPulsar: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = MedidasLadon.areaTactil)
+                .clickable(onClick = alPulsar)
+                .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        IconoLadon(icono = icono, descripcion = null, estado = EstadoIcono.ACENTO)
+        Text(
+            text = titulo,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
@@ -144,6 +183,7 @@ private fun iconoDe(tipo: TipoAnotacion): Int =
     }
 
 const val TAG_HOJA_ANOTACIONES = "hoja_anotaciones"
+const val TAG_ANADIR_IMAGEN = "anotaciones_anadir_imagen"
 const val TAG_SIN_ANOTACIONES = "anotaciones_ninguna"
 
 fun tagAnotacion(posicion: Int): String = "anotacion_$posicion"
