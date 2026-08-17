@@ -13,8 +13,14 @@ la casa. Esta app no lleva sistema de auto-actualización propio.
 
 ## Estado
 
-Fase 1 (visor) en curso. El detalle de fases y criterios de aceptación está en
-[`PLAN.md`](PLAN.md).
+**Las once fases del plan están escritas y con sus tests en verde.** El detalle de
+cada una y sus criterios de aceptación están en [`PLAN.md`](PLAN.md).
+
+Lo que queda no es código, es aparato: la primera publicación en DracApps hay que
+hacerla con la keystore delante (ver «Publicación» más abajo), y hay cosas que sólo se
+demuestran tocándolas —el escáner con la cámara, imprimir de verdad, un `.docx` abierto
+en Word, un PDF que llega por WhatsApp—. Están listadas una a una, con qué mirar y qué
+significaría que fallara, en [`PRUEBAS-MANUALES.md`](PRUEBAS-MANUALES.md).
 
 ## Arquitectura
 
@@ -38,7 +44,7 @@ texto estructurado se comporten igual en las dos aplicaciones.
 ./gradlew connectedCheck     # tests instrumentados (necesita emulador o móvil)
 ```
 
-Requiere JDK 17 y el SDK de Android (compileSdk 35).
+Requiere JDK 17 y el SDK de Android (compileSdk 36).
 
 ## Diseño
 

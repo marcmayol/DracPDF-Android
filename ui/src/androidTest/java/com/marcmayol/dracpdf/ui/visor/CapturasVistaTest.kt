@@ -4,10 +4,7 @@ import android.app.UiAutomation
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.marcmayol.dracpdf.adaptadores.firmas.AlmacenFirmasFichero
@@ -15,12 +12,14 @@ import com.marcmayol.dracpdf.adaptadores.fixtures.GeneradorFixtures
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfAnotaciones
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfContenido
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfDocumentRepository
+import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfEdicion
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfFormService
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfStampService
 import com.marcmayol.dracpdf.adaptadores.mupdf.SesionesMuPdf
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
 import com.marcmayol.dracpdf.dominio.casos.BuscarEnDocumento
+import com.marcmayol.dracpdf.dominio.casos.EditarContenido
 import com.marcmayol.dracpdf.dominio.casos.EstamparFirma
 import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
@@ -139,6 +138,7 @@ class CapturasVistaTest {
                     contenido,
                     contenido,
                     MarcarDocumento(MuPdfAnotaciones(sesiones), registro),
+                    EditarContenido(MuPdfEdicion(sesiones), registro),
                 ),
                 registro,
                 CachePaginas(CachePaginas.presupuestoPara(contexto)),
@@ -162,7 +162,10 @@ class CapturasVistaTest {
         Thread.sleep(ESPERA_AL_RENDER_MS)
         composicion.waitForIdle()
 
-        val mapa = composicion.onNodeWithTag(TAG_LISTA).captureToImage().asAndroidBitmap()
+        // Del sistema y no del nodo: lo que hay que ver es la pantalla entera, con sus
+        // barras, y las hojas y diálogos viven en ventanas que el árbol de Compose de
+        // la pantalla de debajo no alcanza.
+        val mapa = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         val destino = File(contexto.getExternalFilesDir(null), "$nombre.png")
         FileOutputStream(destino).use { salida -> mapa.compress(Bitmap.CompressFormat.PNG, CALIDAD_PNG, salida) }
         sacarDelSandbox(destino)

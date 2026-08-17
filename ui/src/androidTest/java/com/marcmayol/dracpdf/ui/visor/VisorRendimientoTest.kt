@@ -9,12 +9,14 @@ import com.marcmayol.dracpdf.adaptadores.fixtures.GeneradorFixtures
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfAnotaciones
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfContenido
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfDocumentRepository
+import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfEdicion
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfFormService
 import com.marcmayol.dracpdf.adaptadores.mupdf.MuPdfStampService
 import com.marcmayol.dracpdf.adaptadores.mupdf.SesionesMuPdf
 import com.marcmayol.dracpdf.adaptadores.saf.FuenteDocumentosAndroid
 import com.marcmayol.dracpdf.dominio.casos.AbrirDocumento
 import com.marcmayol.dracpdf.dominio.casos.BuscarEnDocumento
+import com.marcmayol.dracpdf.dominio.casos.EditarContenido
 import com.marcmayol.dracpdf.dominio.casos.EstamparFirma
 import com.marcmayol.dracpdf.dominio.casos.GuardarDocumento
 import com.marcmayol.dracpdf.dominio.casos.ListarCampos
@@ -86,6 +88,7 @@ class VisorRendimientoTest {
                     contenido,
                     contenido,
                     MarcarDocumento(MuPdfAnotaciones(sesiones), registro),
+                    EditarContenido(MuPdfEdicion(sesiones), registro),
                 ),
                 registro,
                 cache,

@@ -96,7 +96,9 @@ class InventarioFase1Test {
     private val visor =
         listOf(
             Accion(TAG_ATRAS, "Atrás", "cierra el documento y vuelve a inicio", "siempre"),
-            Accion(TAG_BUSCAR, "Buscar", "Fase 7", "deshabilitada en la Fase 1", habilitada = false),
+            // Estuvo apagada desde la Fase 1 hasta que llegó su fase; el inventario
+            // sigue vigilando que exista y esté en su sitio, que es de lo que va.
+            Accion(TAG_BUSCAR, "Buscar", "abre la barra de búsqueda", "desde la Fase 7"),
             // El cuarto sitio de la barra es el ⋮, no un botón suelto: «documentos
             // abiertos» pasó dentro del menú en la revisión de conformidad de la Fase 5.
             Accion(TAG_MENU, "⋮", "menú de acciones del documento", "siempre"),
