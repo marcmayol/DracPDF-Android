@@ -10,7 +10,7 @@ Formato: un apartado `## v<versionName>` por versión, con la fecha de publicaci
 lado; mientras no esté publicada, «sin publicar». La primera línea del apartado hace
 de titular en la tienda, así que conviene que se entienda sola.
 
-## v0.1.0 — sin publicar
+## v0.1.0 — 18 de agosto de 2026
 
 Primera versión de DracPDF para Android.
 
